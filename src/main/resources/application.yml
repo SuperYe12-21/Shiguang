@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: shiguang
+  profiles:
+    active: dev
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+
+server:
+  port: 8080
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+jwt:
+  secret: ${JWT_SECRET:dev-only-secret-key-change-in-production-0123456789abcdef}
+  access-expire-minutes: ${JWT_ACCESS_EXPIRE_MINUTES:120}
+  refresh-expire-days: ${JWT_REFRESH_EXPIRE_DAYS:14}
+
+app:
+  sms:
+    provider: ${SMS_PROVIDER:mock}
+    mock-code: ${SMS_MOCK_CODE:123456}
+    code-expire-minutes: ${SMS_CODE_EXPIRE_MINUTES:5}
+    cooldown-seconds: ${SMS_COOLDOWN_SECONDS:60}
+    hourly-limit: ${SMS_HOURLY_LIMIT:5}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
