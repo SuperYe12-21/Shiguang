@@ -31,6 +31,18 @@ app:
     code-expire-minutes: ${SMS_CODE_EXPIRE_MINUTES:5}
     cooldown-seconds: ${SMS_COOLDOWN_SECONDS:60}
     hourly-limit: ${SMS_HOURLY_LIMIT:5}
+  storage:
+    minio:
+      endpoint: ${MINIO_ENDPOINT:http://127.0.0.1:9000}
+      access-key: ${MINIO_ACCESS_KEY:minioadmin}
+      secret-key: ${MINIO_SECRET_KEY:minioadmin}
+      bucket: ${MINIO_BUCKET:shiguang-media}
+    presign-expiry-minutes: ${STORAGE_PRESIGN_EXPIRY_MINUTES:60}
+  transcode:
+    ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
+    queue: ${TRANSCODE_QUEUE:shiguang.transcode}
+    exchange: ${TRANSCODE_EXCHANGE:shiguang.transcode.exchange}
+    routing-key: ${TRANSCODE_ROUTING_KEY:transcode}
 
 springdoc:
   swagger-ui:
