@@ -2,7 +2,7 @@
   <article class="pc-card sg-card">
     <div class="media" @click="togglePlay">
       <video
-        v-if="post.type === 'VIDEO'"
+        v-if="post.type === 'VIDEO' && !videoFailed"
         ref="videoEl"
         class="video"
         :src="post.videoUrl"
@@ -13,17 +13,19 @@
         preload="metadata"
         @error="videoFailed = true"
       />
-      <img v-if="!imgFailed && cover" class="image" :src="cover" :alt="post.title || '作品'" loading="lazy" @error="imgFailed = true" />
-      <div v-else-if="imgFailed || !cover" class="image image-fallback">
+      <div v-else-if="post.type === 'VIDEO'" class="image image-fallback">
         <span class="fallback-mark">拾</span>
-        <span class="fallback-text">图片暂时无法加载</span>
+        <span class="fallback-text">视频暂时无法加载</span>
       </div>
+      <template v-else>
+        <img v-if="!imgFailed && cover" class="image" :src="cover" :alt="post.title || '作品'" loading="lazy" @error="imgFailed = true" />
+        <div v-else class="image image-fallback">
+          <span class="fallback-mark">拾</span>
+          <span class="fallback-text">图片暂时无法加载</span>
+        </div>
+      </template>
 
-      <div v-if="post.type === 'VIDEO' && videoFailed" class="play-mask fail-mask">
-        <span>视频加载失败</span>
-      </div>
-
-      <div v-else-if="post.type === 'VIDEO' && !playing" class="play-mask">
+      <div v-if="post.type === 'VIDEO' && !videoFailed && !playing" class="play-mask">
         <span class="play-icon">▶</span>
       </div>
     </div>
@@ -148,6 +150,7 @@ function formatCount(n) {
 
 .video {
   width: 100%;
+  min-height: 42vh;
   max-height: 62vh;
   object-fit: contain;
   display: block;
@@ -156,6 +159,7 @@ function formatCount(n) {
 
 .image {
   width: 100%;
+  min-height: 240px;
   max-height: 62vh;
   object-fit: contain;
   display: block;
@@ -163,6 +167,9 @@ function formatCount(n) {
 }
 
 .image-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-direction: column;
   gap: 12px;
   color: rgba(255, 255, 255, 0.75);
@@ -182,12 +189,6 @@ function formatCount(n) {
 
 .fallback-text {
   font-size: 13px;
-}
-
-.fail-mask {
-  background: rgba(0, 0, 0, 0.55);
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 14px;
 }
 
 .play-mask {
