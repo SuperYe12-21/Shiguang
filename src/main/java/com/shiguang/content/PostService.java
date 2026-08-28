@@ -2,11 +2,14 @@ package com.shiguang.content;
 
 import com.shiguang.common.BizException;
 import com.shiguang.content.transcode.TranscodePublisher;
+import com.shiguang.interaction.CommentService;
+import com.shiguang.interaction.LikeService;
 import com.shiguang.storage.StorageService;
 import com.shiguang.user.User;
 import com.shiguang.user.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +25,9 @@ public class PostService {
     private final UserService userService;
     private final StorageService storageService;
     private final TranscodePublisher transcodePublisher;
+    private final LikeService likeService;
+    private final CommentService commentService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public PostVO create(CreatePostRequest request, Long userId) {
@@ -53,12 +59,22 @@ public class PostService {
         if (type == PostType.VIDEO) {
             transcodePublisher.send(post.getId());
             log.info("video post {} enqueued for transcoding", post.getId());
+        } else {
+            eventPublisher.publishEvent(new PostPublishedEvent(post.getId()));
         }
         return toVO(post);
     }
 
     public PostVO getDetail(Long id) {
-        return toVO(requirePost(id));
+        return getDetail(id, null);
+    }
+
+    public PostVO getDetail(Long id, Long viewerId) {
+        Post post = requirePost(id);
+        PostVO vo = toVO(post);
+        vo.setLiked(viewerId != null && likeService.isPostLiked(id, viewerId));
+        vo.setLikeCount(Math.max(0, post.getLikeCount() + likeService.postPendingDelta(id)));
+        return vo;
     }
 
     @Transactional
@@ -69,6 +85,9 @@ public class PostService {
         }
         deleteObjects(post);
         postMapper.deleteById(id);
+        likeService.cleanupPost(id);
+        commentService.cleanupPost(id);
+        eventPublisher.publishEvent(new PostDeletedEvent(id));
     }
 
     public void markPublished(Long postId, String videoObject, String coverObject) {
@@ -81,6 +100,7 @@ public class PostService {
         post.setStatus(PostStatus.PUBLISHED);
         post.setFailReason("");
         postMapper.updateById(post);
+        eventPublisher.publishEvent(new PostPublishedEvent(postId));
         log.info("post {} published", postId);
     }
 
@@ -101,6 +121,35 @@ public class PostService {
             throw new BizException(404, "作品不存在或已删除");
         }
         return post;
+    }
+
+    public PostVO toVO(Post post) {
+        User author = userService.getById(post.getUserId());
+        PostVO.PostVOBuilder builder = PostVO.builder()
+                .id(post.getId())
+                .type(post.getType())
+                .title(post.getTitle())
+                .description(post.getDescription())
+                .status(post.getStatus())
+                .likeCount(post.getLikeCount())
+                .commentCount(post.getCommentCount())
+                .failReason(post.getFailReason())
+                .createdAt(post.getCreatedAt())
+                .author(PostVO.Author.builder()
+                        .id(author.getId())
+                        .nickname(author.getNickname())
+                        .avatarUrl(author.getAvatarUrl())
+                        .build());
+        if (!isBlank(post.getVideoObject())) {
+            builder.videoUrl(storageService.presignedGetUrl(post.getVideoObject()));
+        }
+        if (!isBlank(post.getCoverObject())) {
+            builder.coverUrl(storageService.presignedGetUrl(post.getCoverObject()));
+        }
+        if (post.getImagesObject() != null) {
+            builder.images(post.getImagesObject().stream().map(storageService::presignedGetUrl).toList());
+        }
+        return builder.build();
     }
 
     private PostType parseType(String type) {
@@ -129,35 +178,6 @@ public class PostService {
         } catch (Exception e) {
             log.warn("删除存储对象失败: {}", objectName, e);
         }
-    }
-
-    private PostVO toVO(Post post) {
-        User author = userService.getById(post.getUserId());
-        PostVO.PostVOBuilder builder = PostVO.builder()
-                .id(post.getId())
-                .type(post.getType())
-                .title(post.getTitle())
-                .description(post.getDescription())
-                .status(post.getStatus())
-                .likeCount(post.getLikeCount())
-                .commentCount(post.getCommentCount())
-                .failReason(post.getFailReason())
-                .createdAt(post.getCreatedAt())
-                .author(PostVO.Author.builder()
-                        .id(author.getId())
-                        .nickname(author.getNickname())
-                        .avatarUrl(author.getAvatarUrl())
-                        .build());
-        if (!isBlank(post.getVideoObject())) {
-            builder.videoUrl(storageService.presignedGetUrl(post.getVideoObject()));
-        }
-        if (!isBlank(post.getCoverObject())) {
-            builder.coverUrl(storageService.presignedGetUrl(post.getCoverObject()));
-        }
-        if (post.getImagesObject() != null) {
-            builder.images(post.getImagesObject().stream().map(storageService::presignedGetUrl).toList());
-        }
-        return builder.build();
     }
 
     private static boolean isBlank(String s) {

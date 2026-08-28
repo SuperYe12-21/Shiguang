@@ -2,6 +2,9 @@ package com.shiguang.content;
 
 import com.shiguang.common.BizException;
 import com.shiguang.content.transcode.TranscodePublisher;
+import com.shiguang.interaction.CommentService;
+import com.shiguang.interaction.LikeService;
+import org.springframework.context.ApplicationEventPublisher;
 import com.shiguang.storage.StorageService;
 import com.shiguang.user.User;
 import com.shiguang.user.UserService;
@@ -40,6 +43,15 @@ class PostServiceTest {
 
     @Mock
     private TranscodePublisher transcodePublisher;
+
+    @Mock
+    private LikeService likeService;
+
+    @Mock
+    private CommentService commentService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private PostService postService;
@@ -129,6 +141,8 @@ class PostServiceTest {
         postService.delete(1L, 7L);
 
         verify(postMapper).deleteById((Serializable) 1L);
+        verify(likeService).cleanupPost(1L);
+        verify(commentService).cleanupPost(1L);
         verify(storageService).deleteObject("videos/src.mp4");
         verify(storageService).deleteObject("videos/out.mp4");
         verify(storageService).deleteObject("covers/c.jpg");
@@ -164,7 +178,7 @@ class PostServiceTest {
         when(storageService.presignedGetUrl("videos/out.mp4")).thenReturn("http://minio/videos/out.mp4?sig=1");
         when(storageService.presignedGetUrl("covers/c.jpg")).thenReturn("http://minio/covers/c.jpg?sig=2");
 
-        PostVO vo = postService.getDetail(1L);
+        PostVO vo = postService.getDetail(1L, null);
 
         assertThat(vo.getVideoUrl()).isEqualTo("http://minio/videos/out.mp4?sig=1");
         assertThat(vo.getCoverUrl()).isEqualTo("http://minio/covers/c.jpg?sig=2");
@@ -175,7 +189,7 @@ class PostServiceTest {
     @Test
     void getDetail_missing_throws404() {
         when(postMapper.selectById(1L)).thenReturn(null);
-        assertThatThrownBy(() -> postService.getDetail(1L))
+        assertThatThrownBy(() -> postService.getDetail(1L, null))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("不存在");
     }

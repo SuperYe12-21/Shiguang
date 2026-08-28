@@ -1,38 +1,25 @@
-package com.shiguang.content;
+package com.shiguang.interaction;
 
 import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
 @Builder
-public class PostVO {
+public class CommentVO {
 
     private Long id;
 
-    private PostType type;
+    private Long postId;
 
-    private String title;
+    private Long userId;
 
-    private String description;
-
-    private PostStatus status;
-
-    private String videoUrl;
-
-    private String coverUrl;
-
-    private List<String> images;
+    private String content;
 
     private Integer likeCount;
 
-    private Integer commentCount;
-
     private Boolean liked;
-
-    private String failReason;
 
     private Author author;
 
