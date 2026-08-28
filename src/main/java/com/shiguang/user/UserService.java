@@ -2,6 +2,9 @@ package com.shiguang.user;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.shiguang.common.BizException;
+import com.shiguang.content.Post;
+import com.shiguang.content.PostMapper;
+import com.shiguang.content.PostStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
     private final UserMapper userMapper;
+    private final FollowService followService;
+    private final PostMapper postMapper;
 
     @Transactional
     public User findOrCreateByPhone(String phone) {
@@ -28,9 +33,27 @@ public class UserService {
     public User getById(Long id) {
         User user = userMapper.selectById(id);
         if (user == null) {
-            throw new BizException("用户不存在");
+            throw new BizException(404, "用户不存在");
         }
         return user;
+    }
+
+    /** 他人主页聚合：资料 + 关注/粉丝/作品统计 + 当前登录人是否已关注 */
+    public UserProfileVO getProfile(Long userId, Long viewerId) {
+        User user = getById(userId);
+        return UserProfileVO.builder()
+                .id(user.getId())
+                .nickname(user.getNickname())
+                .avatarUrl(user.getAvatarUrl())
+                .bio(user.getBio())
+                .createdAt(user.getCreatedAt())
+                .followerCount(followService.followerCount(userId))
+                .followingCount(followService.followingCount(userId))
+                .postCount(postMapper.selectCount(new LambdaQueryWrapper<Post>()
+                        .eq(Post::getUserId, userId)
+                        .eq(Post::getStatus, PostStatus.PUBLISHED)))
+                .followedByMe(followService.isFollowing(viewerId, userId))
+                .build();
     }
 
     @Transactional
