@@ -38,7 +38,7 @@
         <p class="panel-section-title">更多作品</p>
         <div v-if="morePosts.length" class="more-list">
           <button v-for="p in morePosts" :key="p.id" class="more-item" @click="$emit('select', p)">
-            <img class="more-thumb" :src="p.coverUrl || (p.images && p.images[0]) || fallbackThumb(p)" alt="" loading="lazy" />
+            <img class="more-thumb" :src="thumbOf(p)" alt="" loading="lazy" @error="onThumbError(p, $event)" />
             <div class="more-info">
               <span class="more-title">{{ p.title || '分享美好瞬间' }}</span>
               <span class="more-sub">{{ formatCount(p.likeCount) }} 赞 · {{ formatCount(p.commentCount) }} 评论</span>
@@ -77,6 +77,14 @@ const fallbackAvatar = computed(() => {
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><rect width='96' height='96' rx='48' fill='hsl(${hue},60%,86%)'/><text x='48' y='64' font-size='42' text-anchor='middle' fill='hsl(${hue},45%,42%)' font-family='sans-serif'>${ch}</text></svg>`
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 })
+
+function thumbOf(p) {
+  return (p.coverUrl || (p.images && p.images[0])) || fallbackThumb(p)
+}
+
+function onThumbError(p, event) {
+  event.target.src = fallbackThumb(p)
+}
 
 function fallbackThumb(p) {
   const hue = ((p.id || 0) * 47) % 360

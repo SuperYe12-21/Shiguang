@@ -11,10 +11,19 @@
         muted
         playsinline
         preload="metadata"
+        @error="videoFailed = true"
       />
-      <img v-else class="image" :src="cover" :alt="post.title || '作品'" loading="lazy" />
+      <img v-if="!imgFailed && cover" class="image" :src="cover" :alt="post.title || '作品'" loading="lazy" @error="imgFailed = true" />
+      <div v-else-if="imgFailed || !cover" class="image image-fallback">
+        <span class="fallback-mark">拾</span>
+        <span class="fallback-text">图片暂时无法加载</span>
+      </div>
 
-      <div v-if="post.type === 'VIDEO' && !playing" class="play-mask">
+      <div v-if="post.type === 'VIDEO' && videoFailed" class="play-mask fail-mask">
+        <span>视频加载失败</span>
+      </div>
+
+      <div v-else-if="post.type === 'VIDEO' && !playing" class="play-mask">
         <span class="play-icon">▶</span>
       </div>
     </div>
@@ -68,6 +77,8 @@ const emit = defineEmits(['like', 'comment', 'share', 'follow'])
 
 const videoEl = ref(null)
 const playing = ref(false)
+const imgFailed = ref(false)
+const videoFailed = ref(false)
 let observer = null
 
 const author = computed(() => props.post.author || {})
@@ -149,6 +160,34 @@ function formatCount(n) {
   object-fit: contain;
   display: block;
   background: #141210;
+}
+
+.image-fallback {
+  flex-direction: column;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.fallback-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: var(--sg-gradient-deep);
+  color: #fff;
+  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fallback-text {
+  font-size: 13px;
+}
+
+.fail-mask {
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
 }
 
 .play-mask {
