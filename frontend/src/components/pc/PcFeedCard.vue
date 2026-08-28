@@ -1,12 +1,13 @@
 <template>
   <article class="pc-card sg-card">
-    <div class="media" @click="togglePlay">
+    <div class="media" @click="onMediaClick">
       <video
         v-if="post.type === 'VIDEO' && !videoFailed"
         ref="videoEl"
         class="video"
         :src="post.videoUrl"
         :poster="post.coverUrl || undefined"
+        :controls="fullscreenActive"
         loop
         muted
         playsinline
@@ -25,6 +26,13 @@
         </div>
       </template>
 
+      <button v-if="post.type === 'VIDEO' && !videoFailed" class="fullscreen-btn" :title="'全屏播放'" @click.stop="openFullscreen">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+      </button>
+      <div v-if="post.type === 'IMAGE' && !imgFailed && cover" class="zoom-hint">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+        查看大图
+      </div>
       <div v-if="post.type === 'VIDEO' && !videoFailed && !playing" class="play-mask">
         <span class="play-icon">▶</span>
       </div>
@@ -65,6 +73,12 @@
         </button>
       </div>
     </div>
+    <Teleport to="body">
+      <div v-if="lightboxOpen" class="sg-lightbox" @click.self="closeLightbox">
+        <img class="sg-lightbox-img" :src="cover" :alt="post.title || '作品'" />
+        <button class="sg-lightbox-close" :aria-label="'关闭'" @click="closeLightbox">×</button>
+      </div>
+    </Teleport>
   </article>
 </template>
 
@@ -75,12 +89,15 @@ const props = defineProps({
   post: { type: Object, required: true }
 })
 
-const emit = defineEmits(['like', 'comment', 'share', 'follow'])
+const emit = defineEmits(['like', 'comment', 'share', 'follow', 'select'])
 
 const videoEl = ref(null)
 const playing = ref(false)
 const imgFailed = ref(false)
 const videoFailed = ref(false)
+const lightboxOpen = ref(false)
+const fullscreenActive = ref(false)
+let escHandler = null
 let observer = null
 
 const author = computed(() => props.post.author || {})
@@ -97,6 +114,9 @@ const fallbackAvatar = computed(() => {
 onMounted(() => {
   const v = videoEl.value
   if (!v) return
+  v.addEventListener('fullscreenchange', () => {
+    fullscreenActive.value = document.fullscreenElement === v
+  })
   observer = new IntersectionObserver(
     (entries) => {
       const entry = entries[0]
@@ -115,6 +135,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (observer) observer.disconnect()
+  if (escHandler) {
+    document.removeEventListener('keydown', escHandler)
+    escHandler = null
+  }
+  document.body.style.overflow = ''
 })
 
 function togglePlay() {
@@ -126,6 +151,43 @@ function togglePlay() {
     v.pause()
   }
   playing.value = !v.paused
+}
+
+function onMediaClick() {
+  emit('select')
+  if (props.post.type === 'IMAGE') {
+    openLightbox()
+  } else {
+    togglePlay()
+  }
+}
+
+function openLightbox() {
+  lightboxOpen.value = true
+  document.body.style.overflow = 'hidden'
+  escHandler = (e) => {
+    if (e.key === 'Escape') closeLightbox()
+  }
+  document.addEventListener('keydown', escHandler)
+}
+
+function closeLightbox() {
+  lightboxOpen.value = false
+  document.body.style.overflow = ''
+  if (escHandler) {
+    document.removeEventListener('keydown', escHandler)
+    escHandler = null
+  }
+}
+
+async function openFullscreen() {
+  const v = videoEl.value
+  if (!v) return
+  try {
+    await v.requestFullscreen()
+  } catch (e) {
+    // noop: fullscreen may be unsupported
+  }
 }
 
 function formatCount(n) {
@@ -189,6 +251,84 @@ function formatCount(n) {
 
 .fallback-text {
   font-size: 13px;
+}
+
+.fullscreen-btn {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.media:hover .fullscreen-btn,
+.media:hover .zoom-hint {
+  opacity: 1;
+}
+
+.zoom-hint {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: var(--sg-radius-full);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 12px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.sg-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(10, 9, 8, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.sg-lightbox-img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: var(--sg-radius);
+  box-shadow: var(--sg-shadow-lg);
+}
+
+.sg-lightbox-close {
+  position: fixed;
+  right: 24px;
+  top: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.sg-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.24);
 }
 
 .play-mask {

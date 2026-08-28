@@ -48,6 +48,7 @@
             v-for="post in feed.posts"
             :key="post.id"
             :post="post"
+            @select="selectPost"
             @like="feed.toggleLike(post)"
             @comment="onComment(post)"
             @share="onShare(post)"
@@ -139,6 +140,21 @@ function onScroll() {
     const itemHeight = Math.max(el.clientHeight, 1)
     const index = Math.round(el.scrollTop / itemHeight)
     currentIndex.value = Math.min(Math.max(index, 0), feed.posts.length - 1)
+  } else {
+    // PC: card nearest to viewport center becomes current
+    const center = el.scrollTop + el.clientHeight / 2
+    let best = 0
+    let bestDist = Infinity
+    Array.from(el.children).forEach((child, i) => {
+      if (i >= feed.posts.length) return
+      const mid = child.offsetTop + child.offsetHeight / 2
+      const dist = Math.abs(mid - center)
+      if (dist < bestDist) {
+        bestDist = dist
+        best = i
+      }
+    })
+    currentIndex.value = best
   }
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 600) {
     feed.loadMore()
@@ -151,10 +167,16 @@ function scrollToPost(post) {
   if (!el) return
   const index = feed.posts.findIndex((p) => p.id === post.id)
   if (index < 0) return
+  currentIndex.value = index
   const card = el.children[index]
   if (card) {
     el.scrollTo({ top: card.offsetTop - 12, behavior: 'smooth' })
   }
+}
+
+function selectPost(post) {
+  const index = feed.posts.findIndex((p) => p.id === post.id)
+  if (index >= 0) currentIndex.value = index
 }
 
 function onComment(post) {
