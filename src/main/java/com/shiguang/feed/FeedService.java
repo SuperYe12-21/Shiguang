@@ -16,6 +16,7 @@ import com.shiguang.content.PostVO;
 import com.shiguang.interaction.CommentCreatedEvent;
 import com.shiguang.interaction.CommentDeletedEvent;
 import com.shiguang.interaction.LikeService;
+import com.shiguang.user.FollowService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -46,6 +47,7 @@ public class FeedService {
     private final PostMapper postMapper;
     private final PostService postService;
     private final LikeService likeService;
+    private final FollowService followService;
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
 
@@ -105,10 +107,15 @@ public class FeedService {
             List<Long> ids = page.stream().map(Post::getId).toList();
             Map<Long, Integer> pending = likeService.postPendingDeltas(ids);
             Map<Long, Boolean> liked = likeService.postLikedMap(ids, viewerId);
+            List<Long> authorIds = page.stream().map(Post::getUserId).distinct().toList();
+            Map<Long, Boolean> following = followService.followingMap(viewerId, authorIds);
             for (Post post : page) {
                 PostVO vo = postService.toVO(post);
                 vo.setLikeCount(Math.max(0, vo.getLikeCount() + pending.getOrDefault(post.getId(), 0)));
                 vo.setLiked(viewerId != null && liked.getOrDefault(post.getId(), false));
+                if (vo.getAuthor() != null && viewerId != null) {
+                    vo.getAuthor().setFollowing(following.getOrDefault(post.getUserId(), false));
+                }
                 items.add(vo);
             }
         }

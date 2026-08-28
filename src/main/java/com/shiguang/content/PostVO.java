@@ -47,5 +47,7 @@ public class PostVO {
         private String nickname;
 
         private String avatarUrl;
+
+        private Boolean following;
     }
 }

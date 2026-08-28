@@ -1,0 +1,111 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: var(--sg-font);
+  background: var(--sg-bg);
+  color: var(--sg-text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+input {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(38, 34, 31, 0.18);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 通用卡片 */
+.sg-card {
+  background: var(--sg-card);
+  border-radius: var(--sg-radius);
+  box-shadow: var(--sg-shadow);
+}
+
+/* 毛玻璃 */
+.sg-glass {
+  background: var(--sg-glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* 按钮态 */
+.sg-btn-primary {
+  background: var(--sg-primary);
+  color: #fff;
+  border-radius: var(--sg-radius-full);
+  padding: 10px 22px;
+  font-size: 15px;
+  transition: background 0.2s, transform 0.15s;
+}
+
+.sg-btn-primary:active {
+  background: var(--sg-primary-deep);
+  transform: scale(0.97);
+}
+
+.sg-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 骨架屏动画 */
+@keyframes sg-pulse {
+  0% { opacity: 0.55; }
+  50% { opacity: 1; }
+  100% { opacity: 0.55; }
+}
+
+.sg-skeleton {
+  background: rgba(38, 34, 31, 0.08);
+  border-radius: var(--sg-radius-sm);
+  animation: sg-pulse 1.4s ease-in-out infinite;
+}
+
+/* 点赞弹跳 */
+@keyframes sg-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+.sg-pop {
+  animation: sg-pop 0.3s ease;
+}

@@ -181,6 +181,42 @@ class FeedFlowTest {
                 .andExpect(jsonPath("$.data.liked").value(false));
     }
 
+    @Test
+    void feedAuthorFollowing_reflectsFollowState() throws Exception {
+        userAToken = login(userAPhone);
+        userBToken = login(userBPhone);
+        long idA = userIdOf(userAToken);
+        long idB = userIdOf(userBToken);
+
+        // A 关注 B，B 发布作品
+        mockMvc.perform(post("/api/follow/" + idB).header("Authorization", "Bearer " + userAToken))
+                .andExpect(status().isOk());
+        long postB = createImagePost(userBToken, "被关注者的作品");
+        createImagePost(userAToken, "自己的作品");
+
+        // A 拉 Feed：B 的作品 author.following=true，自己的作品为 false
+        MvcResult result = mockMvc.perform(get("/api/posts/feed")
+                        .header("Authorization", "Bearer " + userAToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode items = objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("items");
+        boolean foundB = false;
+        boolean foundOwn = false;
+        for (JsonNode item : items) {
+            if (item.path("id").asLong() == postB) {
+                assertThat(item.path("author").path("following").asBoolean()).isTrue();
+                foundB = true;
+            }
+            if (item.path("author").path("id").asLong() == idA) {
+                assertThat(item.path("author").path("following").asBoolean()).isFalse();
+                foundOwn = true;
+            }
+        }
+        assertThat(foundB).isTrue();
+        assertThat(foundOwn).isTrue();
+    }
+
     private long firstFeedItemId(String token) throws Exception {
         MvcResult result = mockMvc.perform(get("/api/posts/feed")
                         .header("Authorization", "Bearer " + token))

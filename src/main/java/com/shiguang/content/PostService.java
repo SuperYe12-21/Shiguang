@@ -6,6 +6,7 @@ import com.shiguang.interaction.CommentService;
 import com.shiguang.interaction.LikeService;
 import com.shiguang.storage.StorageService;
 import com.shiguang.user.User;
+import com.shiguang.user.FollowService;
 import com.shiguang.user.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,7 @@ public class PostService {
     private final TranscodePublisher transcodePublisher;
     private final LikeService likeService;
     private final CommentService commentService;
+    private final FollowService followService;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -74,6 +76,10 @@ public class PostService {
         PostVO vo = toVO(post);
         vo.setLiked(viewerId != null && likeService.isPostLiked(id, viewerId));
         vo.setLikeCount(Math.max(0, post.getLikeCount() + likeService.postPendingDelta(id)));
+        if (vo.getAuthor() != null && viewerId != null) {
+            vo.getAuthor().setFollowing(followService.followingMap(viewerId, java.util.List.of(post.getUserId()))
+                    .getOrDefault(post.getUserId(), false));
+        }
         return vo;
     }
 

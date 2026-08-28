@@ -1,0 +1,37 @@
+/* 拾光设计令牌：米白底 + 暖珊瑚强调 + 圆角 */
+:root {
+  /* 颜色 */
+  --sg-bg: #f7f7f5;
+  --sg-bg-warm: #f3ede6;
+  --sg-bg-deep: #ece2d6;
+  --sg-primary: #ff5c5c;
+  --sg-primary-deep: #e84b4b;
+  --sg-primary-soft: #ffe9e6;
+  --sg-text: #26221f;
+  --sg-text-2: #8a837d;
+  --sg-text-3: #b8b2ab;
+  --sg-card: #ffffff;
+  --sg-line: rgba(38, 34, 31, 0.08);
+  --sg-glass: rgba(255, 255, 255, 0.72);
+
+  /* 圆角 */
+  --sg-radius-sm: 8px;
+  --sg-radius: 14px;
+  --sg-radius-lg: 20px;
+  --sg-radius-full: 999px;
+
+  /* 阴影 */
+  --sg-shadow: 0 8px 30px rgba(38, 34, 31, 0.08);
+  --sg-shadow-lg: 0 16px 48px rgba(38, 34, 31, 0.16);
+
+  /* 尺寸 */
+  --sg-nav-h: 56px;
+  --sg-page-w: 560px;
+
+  /* 字体 */
+  --sg-font: 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+
+  /* 渐变 */
+  --sg-gradient: linear-gradient(160deg, #fdf6ee 0%, #f7e9dd 55%, #fbe3de 100%);
+  --sg-gradient-deep: linear-gradient(165deg, #f7e0d4 0%, #f3c9c3 100%);
+}

@@ -8,7 +8,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -84,6 +88,23 @@ public class FollowService {
         return followMapper.selectCount(new LambdaQueryWrapper<Follow>()
                 .eq(Follow::getFollowerId, followerId)
                 .eq(Follow::getFolloweeId, followeeId)) > 0;
+    }
+
+    /** 批量查询 follower 是否关注了这些用户（信息流/详情用） */
+    public Map<Long, Boolean> followingMap(Long followerId, Collection<Long> followeeIds) {
+        if (followerId == null || followeeIds == null || followeeIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> distinct = followeeIds.stream().distinct().toList();
+        Set<Long> following = followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                        .eq(Follow::getFollowerId, followerId)
+                        .in(Follow::getFolloweeId, distinct))
+                .stream().map(Follow::getFolloweeId).collect(Collectors.toSet());
+        Map<Long, Boolean> result = new HashMap<>();
+        for (Long id : distinct) {
+            result.put(id, following.contains(id));
+        }
+        return result;
     }
 
     public User requireUser(Long userId) {
