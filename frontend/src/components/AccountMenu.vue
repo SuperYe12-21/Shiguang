@@ -28,7 +28,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchMe } from '../api/user'
 import { useAuthStore } from '../stores/auth'
 
@@ -52,18 +51,8 @@ function maskPhone(phone) {
   return phone.slice(0, 3) + '****' + phone.slice(7)
 }
 
-async function logout() {
-  try {
-    await ElMessageBox.confirm('确定退出当前账号吗？', '退出登录', {
-      confirmButtonText: '退出',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-  } catch (e) {
-    return
-  }
+function logout() {
   auth.logout()
-  ElMessage.success('已退出登录')
   router.push('/login')
 }
 
