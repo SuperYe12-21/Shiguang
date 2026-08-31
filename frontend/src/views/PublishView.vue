@@ -101,8 +101,10 @@ import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { presignUpload, createPost, fetchPostDetail } from '../api/posts'
+import { useFeedStore } from '../stores/feed'
 
 const router = useRouter()
+const feed = useFeedStore()
 
 const type = ref('VIDEO')
 const title = ref('')
@@ -322,6 +324,7 @@ async function submit() {
       await waitVideoReady(post.id)
       return
     }
+    feed.reset()
     ElMessage.success('发布成功')
     router.push('/feed')
   } catch (err) {
@@ -345,6 +348,7 @@ function waitVideoReady(postId) {
         if (detail && detail.status === 'PUBLISHED') {
           clearTimer()
           processing.value = false
+          feed.reset()
           ElMessage.success('视频转码完成，已发布')
           router.push('/feed')
           resolve()
@@ -357,6 +361,7 @@ function waitVideoReady(postId) {
         } else if (elapsed >= 180000) {
           clearTimer()
           processing.value = false
+          feed.reset()
           ElMessage.warning('视频仍在处理中，稍后可在首页查看')
           router.push('/feed')
           resolve()

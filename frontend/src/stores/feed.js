@@ -47,6 +47,14 @@ export const useFeedStore = defineStore('feed', {
         this.loadingMore = false
       }
     },
+    reset() {
+      this.posts = []
+      this.nextCursor = null
+      this.hasMore = true
+      this.loading = false
+      this.loadingMore = false
+      this.error = ''
+    },
     async toggleLike(post) {
       const auth = useAuthStore()
       if (!auth.isLoggedIn) {
