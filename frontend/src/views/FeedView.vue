@@ -32,7 +32,7 @@
           <p>还没有作品，去发布第一条拾光吧</p>
         </div>
       </main>
-      <BottomNav />
+      <BottomNav @me="accountOpen = true" />
     </template>
 
     <!-- PC：抖音式一屏一卡，滚轮翻页 -->
@@ -79,11 +79,12 @@
         <button class="p-nav-btn on" @click="router.push('/feed')">首页</button>
         <button class="p-nav-btn" @click="todo('发布')">发布</button>
         <button class="p-nav-btn" @click="todo('消息')">消息</button>
-        <button class="p-nav-btn" @click="todo('我的')">我的</button>
+        <button class="p-nav-btn" @click="accountOpen = true">我的</button>
       </nav>
     </template>
 
     <CommentPanel v-if="commentPost" :post="commentPost" @close="commentPost = null" />
+    <AccountMenu v-if="accountOpen" @close="accountOpen = false" />
   </div>
 </template>
 
@@ -98,11 +99,13 @@ import FeedItem from '../components/mobile/FeedItem.vue'
 import BottomNav from '../components/mobile/BottomNav.vue'
 import PcFeedCard from '../components/pc/PcFeedCard.vue'
 import CommentPanel from '../components/CommentPanel.vue'
+import AccountMenu from '../components/AccountMenu.vue'
 
 const router = useRouter()
 const feed = useFeedStore()
 const auth = useAuthStore()
 const commentPost = ref(null)
+const accountOpen = ref(false)
 
 const scrollEl = ref(null)
 const currentIndex = ref(0)

@@ -33,7 +33,7 @@
       <span>消息</span>
     </button>
 
-    <button class="nav-item disabled" @click="todo('我')">
+    <button class="nav-item" @click="$emit('me')">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
       </svg>
@@ -47,6 +47,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
+const emit = defineEmits(['me'])
 const name = 'home'
 
 function go(path) {
