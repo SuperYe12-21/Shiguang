@@ -57,6 +57,7 @@ public class TranscodeWorker {
             storageService.putObject(coverObject, coverJpg.toFile(), "image/jpeg");
             postService.markPublished(postId, videoObject, coverObject);
             log.info("作品 {} 转码完成: {} / {}", postId, videoObject, coverObject);
+            deleteSourceIfUnused(post, postId);
         } catch (Exception e) {
             log.error("作品 {} 转码失败", postId, e);
             postService.markFailed(postId, e.getMessage());
@@ -73,6 +74,19 @@ public class TranscodeWorker {
         }
         int dot = objectName.lastIndexOf('.');
         return dot >= 0 ? objectName.substring(dot) : "";
+    }
+
+    private void deleteSourceIfUnused(Post post, Long postId) {
+        String sourceObject = post.getSourceObject();
+        if (sourceObject == null || sourceObject.isBlank()) {
+            return;
+        }
+        try {
+            storageService.deleteObject(sourceObject);
+            log.info("作品 {} 原始文件已清理: {}", postId, sourceObject);
+        } catch (Exception e) {
+            log.warn("作品 {} 原始文件清理失败: {}", postId, e.getMessage());
+        }
     }
 
     private static void deleteRecursively(Path dir) {
