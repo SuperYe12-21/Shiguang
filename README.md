@@ -28,6 +28,17 @@ docs/superpowers/ 设计与实现计划
 依赖：MySQL 8（库 `shiguang`）、Redis、MinIO、RabbitMQ、FFmpeg。
 
 ```powershell
+# 0. 一键启动全部（中间件 + 后端 8080 + 前端 5173，自动打开浏览器）
+powershell -ExecutionPolicy Bypass -File .devtools/start-all.ps1
+
+# 停止前后端（中间件保持运行）
+powershell -ExecutionPolicy Bypass -File .devtools/start-all.ps1 -Stop
+```
+
+> 一键脚本会自动检查并启动 Redis / MinIO / RabbitMQ；MySQL 请确保已启动（Docker 或本机服务）。
+> 后端通过 `maven-settings-public.xml` 使用公共 Maven 源启动（不依赖内网 Nexus）。
+
+```powershell
 # 1. 初始化数据库
 mysql -uroot -p < db/init/001_schema.sql
 

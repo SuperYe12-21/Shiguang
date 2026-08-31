@@ -32,8 +32,11 @@ build/
 ### VS Code ###
 .vscode/
 
-### Brainstorm ¿ÉÊÓ»¯°éÂÂ ###
+### Brainstorm ï¿½ï¿½ï¿½Ó»ï¿½ï¿½ï¿½ï¿½ï¿½ ###
 .superpowers/
 
-### ±¾µØ¿ª·¢¹¤¾ß ###
-.devtools/
+### ï¿½ï¿½ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ###
+.devtools/*
+!.devtools/start-all.ps1
+!.devtools/start-dev.ps1
+!.devtools/maven-settings-public.xml
