@@ -1,7 +1,6 @@
 package com.shiguang.content;
 
 import com.shiguang.common.BizException;
-import com.shiguang.content.transcode.TranscodePublisher;
 import com.shiguang.interaction.CommentService;
 import com.shiguang.interaction.LikeService;
 import com.shiguang.storage.StorageService;
@@ -25,7 +24,6 @@ public class PostService {
     private final PostMapper postMapper;
     private final UserService userService;
     private final StorageService storageService;
-    private final TranscodePublisher transcodePublisher;
     private final LikeService likeService;
     private final CommentService commentService;
     private final FollowService followService;
@@ -59,8 +57,8 @@ public class PostService {
         postMapper.insert(post);
 
         if (type == PostType.VIDEO) {
-            transcodePublisher.send(post.getId());
-            log.info("video post {} enqueued for transcoding", post.getId());
+            eventPublisher.publishEvent(new PostTranscodeRequestedEvent(post.getId()));
+            log.info("video post {} transcode requested", post.getId());
         } else {
             eventPublisher.publishEvent(new PostPublishedEvent(post.getId()));
         }

@@ -5,9 +5,7 @@
         <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
       </button>
       <h1 class="pub-title">发布作品</h1>
-      <button class="pub-submit" :disabled="!canSubmit || publishing" @click="submit">
-        {{ publishing ? '发布中…' : '发布' }}
-      </button>
+      
     </header>
 
     <main class="pub-body">
@@ -72,11 +70,29 @@
         <textarea v-model="description" class="pub-textarea" maxlength="500" rows="4" placeholder="分享这一刻的故事…（选填）"></textarea>
       </div>
     </main>
+    <!-- 底部发布栏 -->
+    <footer class="pub-footer">
+      <button class="pub-submit" :class="{ on: canSubmit && !publishing }" :disabled="!canSubmit || publishing" @click="submit">
+        {{ publishing ? '发布中…' : '发布' }}
+      </button>
+      <p class="pub-footer-tip" v-if="!canSubmit && !publishing">{{ submitHint }}</p>
+    </footer>
+
 
     <!-- 隐藏文件选择 -->
     <input ref="videoInput" type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/webm" class="hidden-input" @change="onVideoPicked" />
     <input ref="coverInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden-input" @change="onCoverPicked" />
     <input ref="imagesInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple class="hidden-input" @change="onImagesPicked" />
+    <!-- 视频转码进度 -->
+    <div v-if="processing" class="proc-mask">
+      <div class="proc-card">
+        <div v-if="!procFailed" class="proc-spinner"></div>
+        <p class="proc-title">{{ procTitle }}</p>
+        <p class="proc-sub">{{ procSub }}</p>
+        <button v-if="procFailed" class="proc-back" @click="processing = false">返回修改</button>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -84,7 +100,7 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { presignUpload, createPost } from '../api/posts'
+import { presignUpload, createPost, fetchPostDetail } from '../api/posts'
 
 const router = useRouter()
 
@@ -110,6 +126,11 @@ const coverProgress = ref(0)
 
 const images = ref([])
 const publishing = ref(false)
+const processing = ref(false)
+const procTitle = ref('')
+const procSub = ref('')
+const procFailed = ref(false)
+let pollTimer = null
 
 const MAX_VIDEO_MB = 500
 const MAX_IMAGE_MB = 20
@@ -120,6 +141,17 @@ const canSubmit = computed(() => {
     return !!videoObject.value && !videoUploading.value
   }
   return images.value.length > 0 && images.value.every((i) => i.object && !i.uploading)
+})
+
+const submitHint = computed(() => {
+  if (type.value === 'VIDEO') {
+    if (!videoFile.value) return '请先选择视频'
+    if (videoUploading.value) return '视频上传中…'
+    return '请等待视频上传完成'
+  }
+  if (images.value.length === 0) return '请先选择图片'
+  if (images.value.some((i) => i.uploading)) return '图片上传中…'
+  return '请等待图片上传完成'
 })
 
 function switchType(next) {
@@ -284,13 +316,62 @@ async function submit() {
     } else {
       payload.images = images.value.map((i) => i.object)
     }
-    await createPost(payload)
-    ElMessage.success(type.value === 'VIDEO' ? '已发布，视频转码中…' : '发布成功')
+    const post = await createPost(payload)
+    if (type.value === 'VIDEO' && post && post.status === 'PROCESSING') {
+      publishing.value = false
+      await waitVideoReady(post.id)
+      return
+    }
+    ElMessage.success('发布成功')
     router.push('/feed')
   } catch (err) {
     // 错误提示已由拦截器处理
   } finally {
     publishing.value = false
+  }
+}
+
+function waitVideoReady(postId) {
+  return new Promise((resolve) => {
+    processing.value = true
+    procFailed.value = false
+    procTitle.value = '视频转码中…'
+    procSub.value = '正在处理画质与格式，预计 1-2 分钟'
+    let elapsed = 0
+    pollTimer = setInterval(async () => {
+      elapsed += 3000
+      try {
+        const detail = await fetchPostDetail(postId)
+        if (detail && detail.status === 'PUBLISHED') {
+          clearTimer()
+          processing.value = false
+          ElMessage.success('视频转码完成，已发布')
+          router.push('/feed')
+          resolve()
+        } else if (detail && detail.status === 'FAILED') {
+          clearTimer()
+          procFailed.value = true
+          procTitle.value = '转码失败'
+          procSub.value = detail.failReason || '未知原因，请重新尝试发布'
+          resolve()
+        } else if (elapsed >= 180000) {
+          clearTimer()
+          processing.value = false
+          ElMessage.warning('视频仍在处理中，稍后可在首页查看')
+          router.push('/feed')
+          resolve()
+        }
+      } catch (e) {
+        // 网络抖动忽略，继续轮询
+      }
+    }, 3000)
+  })
+}
+
+function clearTimer() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
   }
 }
 
@@ -304,6 +385,8 @@ function clearVideo() {
 }
 
 onBeforeUnmount(() => {
+  clearTimer()
+
   clearVideo()
   removeCover()
   images.value.forEach((i) => URL.revokeObjectURL(i.preview))
@@ -354,24 +437,106 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
+.pub-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--sg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--sg-line);
+}
+
 .pub-submit {
-  height: 34px;
-  padding: 0 18px;
+  width: 100%;
+  height: 48px;
   border-radius: var(--sg-radius-full);
-  background: var(--sg-gradient-deep);
+  background: #d8d4cf;
   color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  transition: opacity 0.2s, transform 0.15s;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  transition: background 0.25s, transform 0.15s, box-shadow 0.25s;
+}
+
+.pub-submit.on {
+  background: var(--sg-gradient-deep);
+  box-shadow: 0 8px 20px rgba(232, 75, 75, 0.35);
+  transform: translateY(-1px);
 }
 
 .pub-submit:disabled {
-  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.pub-submit:not(:disabled):hover {
-  transform: scale(1.04);
+.pub-submit.on:not(:disabled):hover {
+  transform: translateY(-2px) scale(1.01);
+}
+
+.pub-footer-tip {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--sg-text-3);
+}
+
+.proc-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.proc-card {
+  width: min(320px, 84vw);
+  padding: 28px 22px;
+  border-radius: 20px;
+  background: var(--sg-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+.proc-spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 4px solid var(--sg-line);
+  border-top-color: var(--sg-primary);
+  animation: sg-spin 0.9s linear infinite;
+}
+
+@keyframes sg-spin {
+  to { transform: rotate(360deg); }
+}
+
+.proc-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--sg-text);
+}
+
+.proc-sub {
+  font-size: 13px;
+  color: var(--sg-text-2);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.proc-back {
+  margin-top: 6px;
+  padding: 8px 22px;
+  border-radius: var(--sg-radius-full);
+  background: var(--sg-primary-soft);
+  color: var(--sg-primary-deep);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .pub-body {
