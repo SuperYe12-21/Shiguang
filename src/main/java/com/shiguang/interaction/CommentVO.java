@@ -21,6 +21,9 @@ public class CommentVO {
 
     private Boolean liked;
 
+    /** 当前登录用户是否为自己发表的评论 */
+    private Boolean mine;
+
     private Author author;
 
     private LocalDateTime createdAt;

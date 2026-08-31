@@ -137,6 +137,7 @@ public class CommentService {
                 .content(comment.getContent())
                 .likeCount(Math.max(0, comment.getLikeCount() + pendingDelta))
                 .liked(liked)
+                .mine(viewerId != null && viewerId.equals(comment.getUserId()))
                 .author(authorVO)
                 .createdAt(comment.getCreatedAt())
                 .build();

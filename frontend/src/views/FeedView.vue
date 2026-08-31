@@ -82,6 +82,8 @@
         <button class="p-nav-btn" @click="todo('我的')">我的</button>
       </nav>
     </template>
+
+    <CommentPanel v-if="commentPost" :post="commentPost" @close="commentPost = null" />
   </div>
 </template>
 
@@ -95,10 +97,12 @@ import { followUser, unfollowUser } from '../api/user'
 import FeedItem from '../components/mobile/FeedItem.vue'
 import BottomNav from '../components/mobile/BottomNav.vue'
 import PcFeedCard from '../components/pc/PcFeedCard.vue'
+import CommentPanel from '../components/CommentPanel.vue'
 
 const router = useRouter()
 const feed = useFeedStore()
 const auth = useAuthStore()
+const commentPost = ref(null)
 
 const scrollEl = ref(null)
 const currentIndex = ref(0)
@@ -192,7 +196,11 @@ function goPrev() {
 }
 
 function onComment(post) {
-  ElMessage.info('评论面板开发中，下一步上线')
+  if (!auth.isLoggedIn) {
+    location.href = '/login'
+    return
+  }
+  commentPost.value = post
 }
 
 async function onShare(post) {
