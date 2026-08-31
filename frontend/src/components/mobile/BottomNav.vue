@@ -14,7 +14,7 @@
       <span>朋友</span>
     </button>
 
-    <button class="nav-item publish" @click="todo('发布')">
+    <button class="nav-item publish" @click="go('/publish')">
       <span class="publish-circle">
         <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
           <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />

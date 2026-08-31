@@ -77,7 +77,7 @@
       <nav class="p-topbar">
         <span class="p-logo">拾光</span>
         <button class="p-nav-btn on" @click="router.push('/feed')">首页</button>
-        <button class="p-nav-btn" @click="todo('发布')">发布</button>
+        <button class="p-nav-btn" @click="router.push('/publish')">发布</button>
         <button class="p-nav-btn" @click="todo('消息')">消息</button>
         <button class="p-nav-btn" @click="accountOpen = true">我的</button>
       </nav>
