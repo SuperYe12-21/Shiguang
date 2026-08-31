@@ -142,6 +142,7 @@ watch(videoEl, (v) => {
 })
 
 function togglePlay() {
+  if (!props.active) return
   const v = videoEl.value
   if (!v) return
   if (v.paused) {
@@ -177,6 +178,14 @@ function closeLightbox() {
     escHandler = null
   }
 }
+
+onBeforeUnmount(() => {
+  const v = videoEl.value
+  if (v) {
+    v.pause()
+  }
+  closeLightbox()
+})
 
 async function openFullscreen() {
   const v = videoEl.value

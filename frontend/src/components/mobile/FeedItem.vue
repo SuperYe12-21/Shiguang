@@ -78,7 +78,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = defineProps({
   post: { type: Object, required: true },
@@ -116,6 +116,24 @@ watch(
   },
   { immediate: true }
 )
+
+watch(videoEl, (v) => {
+  if (!v) return
+  if (props.active) {
+    v.play().catch(() => {})
+  } else {
+    v.pause()
+  }
+})
+
+onBeforeUnmount(() => {
+  const v = videoEl.value
+  if (v) {
+    v.pause()
+    v.removeAttribute('src')
+    v.load()
+  }
+})
 
 function toggleMute() {
   const v = videoEl.value
