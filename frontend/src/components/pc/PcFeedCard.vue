@@ -10,6 +10,10 @@
         loop
         :muted="muted"
         playsinline
+        webkit-playsinline
+        x5-playsinline
+        x5-video-player-type="h5"
+        controlslist="nodownload noplaybackrate noremoteplayback"
         preload="metadata"
         @error="videoFailed = true"
       />
