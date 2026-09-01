@@ -8,7 +8,7 @@
         :src="post.videoUrl"
         :poster="post.coverUrl || undefined"
         loop
-        muted
+        :muted="muted"
         playsinline
         preload="metadata"
         @error="videoFailed = true"
@@ -20,10 +20,16 @@
       <template v-else>
         <img
           v-if="!imgFailed && cover"
-          class="image"
-          :src="cover"
+          class="image" :class="{ dragging }"
+          :src="postImages[pcImgIndex] || cover"
           :alt="post.title || '作品'"
+          :style="dragging ? { transform: 'translateX(' + dragOffset + 'px)' } : null"
           :loading="active ? 'eager' : 'lazy'"
+          draggable="false"
+          @mousedown="onImgDragStart"
+          @mousemove="onImgDragMove"
+          @mouseup="onImgDragEnd"
+          @mouseleave="onImgDragEnd"
           @error="imgFailed = true"
         />
         <div v-else class="image image-fallback">
@@ -34,14 +40,27 @@
 
       <button
         v-if="post.type === 'VIDEO' && !videoFailed"
+        class="mute-btn"
+        :title="muted ? '打开声音' : '静音'"
+        @click.stop="toggleMute"
+      >
+        <svg v-if="muted" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
+        </svg>
+        <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+        </svg>
+      </button>
+      <button
+        v-if="post.type === 'VIDEO' && !videoFailed"
         class="fullscreen-btn"
         title="全屏播放"
         @click.stop="openFullscreen"
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" /></svg>
       </button>
-      <span v-if="post.type === 'IMAGE' && postImages.length > 1" class="multi-badge">1/{{ postImages.length }}</span>
-      <div v-if="post.type === 'IMAGE' && !imgFailed && cover" class="zoom-hint">
+      <span v-if="post.type === 'IMAGE' && postImages.length > 1" class="multi-badge">{{ pcImgIndex + 1 }}/{{ postImages.length }}</span>
+      <div v-if="post.type === 'IMAGE' && !imgFailed && cover" class="zoom-hint" @click.stop="openLightbox">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z" /></svg>
         查看大图
       </div>
@@ -121,6 +140,45 @@ const postImages = computed(() => {
   return props.post.coverUrl ? [props.post.coverUrl] : []
 })
 const lightboxIndex = ref(0)
+const muted = ref(true)
+const pcImgIndex = ref(0)
+const dragOffset = ref(0)
+const dragging = ref(false)
+let dragStartX = null
+
+function toggleMute() {
+  const v = videoEl.value
+  if (!v) return
+  muted.value = !muted.value
+  v.muted = muted.value
+  if (!v.muted && v.paused) {
+    v.play().catch(() => {})
+  }
+}
+
+function onImgDragStart(e) {
+  if (postImages.value.length < 2) return
+  dragging.value = true
+  dragStartX = e.clientX
+  dragOffset.value = 0
+  e.preventDefault()
+}
+
+function onImgDragMove(e) {
+  if (!dragging.value || dragStartX == null) return
+  dragOffset.value = e.clientX - dragStartX
+}
+
+function onImgDragEnd() {
+  if (!dragging.value) return
+  dragging.value = false
+  const total = postImages.value.length
+  let next = pcImgIndex.value
+  if (dragOffset.value < -60 && pcImgIndex.value < total - 1) next = pcImgIndex.value + 1
+  else if (dragOffset.value > 60 && pcImgIndex.value > 0) next = pcImgIndex.value - 1
+  dragOffset.value = 0
+  pcImgIndex.value = next
+}
 
 function lbPrev() {
   if (lightboxIndex.value > 0) lightboxIndex.value -= 1
@@ -175,14 +233,13 @@ function togglePlay() {
 function onMediaClick() {
   if (props.post.type === 'VIDEO') {
     togglePlay()
-  } else {
-    openLightbox()
   }
+  // 图文：不再点击放大，使用右下角“查看大图”
 }
 
 function openLightbox() {
   lightboxOpen.value = true
-  lightboxIndex.value = 0
+  lightboxIndex.value = pcImgIndex.value
   document.body.style.overflow = 'hidden'
   escHandler = (e) => {
     if (e.key === 'Escape') closeLightbox()
@@ -283,6 +340,18 @@ onBeforeUnmount(() => {
   background: #0b0b0e;
 }
 
+.image {
+  transition: transform 0.25s ease;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.image.dragging {
+  transition: none;
+  cursor: grabbing;
+}
+
 .image-fallback {
   display: flex;
   align-items: center;
@@ -306,6 +375,32 @@ onBeforeUnmount(() => {
 
 .fallback-text {
   font-size: 14px;
+}
+
+.mute-btn {
+  position: absolute;
+  right: 20px;
+  top: 70px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+  z-index: 5;
+}
+
+.media:hover .mute-btn,
+.media:hover .fullscreen-btn {
+  opacity: 1;
+}
+
+.mute-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .fullscreen-btn {
@@ -346,10 +441,14 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.45);
   color: #fff;
   font-size: 12px;
-  pointer-events: none;
+  cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s, background 0.2s;
   z-index: 5;
+}
+
+.zoom-hint:hover {
+  background: rgba(0, 0, 0, 0.6);
 }
 
 .play-mask {
