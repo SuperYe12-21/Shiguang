@@ -9,10 +9,15 @@
       loop
       :muted="muted"
       playsinline
-      preload="metadata"
+      webkit-playsinline
+      x5-playsinline
+      x5-video-player-type="h5"
+      controlslist="nodownload noplaybackrate noremoteplayback"
+      :preload="active ? 'auto' : 'metadata'"
       @click="togglePlay"
       @play="playing = true"
       @pause="playing = false"
+      @loadeddata="onLoadedData"
       @error="videoFailed = true"
     />
     <div v-else class="feed-image">
@@ -119,6 +124,7 @@ const playing = ref(false)
 const soundBlocked = ref(false)
 const showSoundTip = ref(false)
 let soundTipTimer = null
+let retryTimer = null
 const imgFailed = ref(false)
 const videoFailed = ref(false)
 
@@ -198,6 +204,8 @@ watch(videoEl, (v) => {
 })
 
 onBeforeUnmount(() => {
+  if (retryTimer) clearTimeout(retryTimer)
+  if (soundTipTimer) clearTimeout(soundTipTimer)
   const v = videoEl.value
   if (v) {
     v.pause()
@@ -207,6 +215,7 @@ onBeforeUnmount(() => {
 })
 
 function tryPlay(v) {
+  if (!v || v.readyState === 0) return
   v.muted = muted.value
   const p = v.play()
   if (p && p.catch) {
@@ -220,9 +229,28 @@ function tryPlay(v) {
         soundTipTimer = setTimeout(() => {
           showSoundTip.value = false
         }, 4000)
-        v.play().catch(() => {})
+        v.play().catch(() => scheduleRetry(v))
+      } else {
+        scheduleRetry(v)
       }
     })
+  }
+}
+
+function scheduleRetry(v) {
+  if (retryTimer) clearTimeout(retryTimer)
+  retryTimer = setTimeout(() => {
+    if (props.active && v && v.paused && !v.ended) {
+      v.muted = true
+      v.play().catch(() => {})
+    }
+  }, 900)
+}
+
+function onLoadedData() {
+  const v = videoEl.value
+  if (v && props.active && v.paused) {
+    tryPlay(v)
   }
 }
 
@@ -274,8 +302,7 @@ function formatCount(n) {
    保持卡片高度不变，避免最后一条视频因滚动位置被钳制而无法正常压缩 */
 section.feed-item.item-compact .feed-video,
 section.feed-item.item-compact .feed-image {
-  height: 38vh;
-  height: 38dvh;
+  height: 38%;
 }
 
 section.feed-item.item-compact .feed-meta,
@@ -288,14 +315,19 @@ section.feed-item.item-compact .play-mask-m,
 section.feed-item.item-compact .video-fail {
   inset: 0 auto auto 0;
   width: 100%;
-  height: 38vh;
-  height: 38dvh;
+  height: 38%;
+}
+
+/* 评论区打开时：隐藏播放遮罩与三角形图标，避免遮挡评论；点视频本身仍可恢复播放 */
+section.feed-item.item-compact .play-mask-m {
+  display: none;
 }
 
 .feed-video {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  object-position: center 40%;
   display: block;
   transition: height 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
@@ -329,6 +361,7 @@ section.feed-item.item-compact .video-fail {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  object-position: center 40%;
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -373,6 +406,7 @@ section.feed-item.item-compact .video-fail {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  object-position: center 40%;
 }
 
 /* 底部文案渐隐区 */
@@ -384,6 +418,7 @@ section.feed-item.item-compact .video-fail {
   padding: 18px 16px 8px;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
   color: #fff;
+  z-index: 5;
 }
 
 .meta-author {
@@ -435,12 +470,12 @@ section.feed-item.item-compact .video-fail {
 .action-rail {
   position: absolute;
   right: 10px;
-  bottom: calc(var(--sg-nav-h) + env(safe-area-inset-bottom) + 96px);
+  bottom: calc(var(--sg-nav-h) + env(safe-area-inset-bottom) + 161px);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 20px;
-  z-index: 2;
+  z-index: 5;
 }
 
 .rail-avatar-wrap {

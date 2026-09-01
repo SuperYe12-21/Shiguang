@@ -252,6 +252,15 @@ async function initFeed() {
 
 onMounted(async () => {
   await initFeed()
+  // 真机上布局视口高度会包含浏览器地址栏，用 visualViewport 的真实可视高度驱动卡片尺寸
+  const syncViewportHeight = () => {
+    const h = window.visualViewport ? window.visualViewport.height : window.innerHeight
+    document.documentElement.style.setProperty('--sg-vh', h + 'px')
+  }
+  syncViewportHeight()
+  window.visualViewport?.addEventListener('resize', syncViewportHeight)
+  window.visualViewport?.addEventListener('scroll', syncViewportHeight)
+  window.__syncSgVh = syncViewportHeight
   resizeHandler = () => {
     if (!isPc.value) {
       const el = scrollEl.value
@@ -288,6 +297,9 @@ onBeforeUnmount(() => {
   if (resizeHandler) window.removeEventListener('resize', resizeHandler)
   if (keydownHandler) window.removeEventListener('keydown', keydownHandler)
   if (wheelTimer) clearTimeout(wheelTimer)
+  window.visualViewport?.removeEventListener('resize', window.__syncSgVh)
+  window.visualViewport?.removeEventListener('scroll', window.__syncSgVh)
+  delete window.__syncSgVh
 })
 
 watch(isPc, () => {
@@ -390,7 +402,7 @@ function todo(label) {
 
 <style scoped>
 .feed-page {
-  height: 100%;
+  height: var(--sg-vh, 100%);
   display: flex;
 }
 
@@ -442,8 +454,8 @@ function todo(label) {
 
 .m-scroll > .feed-item,
 .m-scroll > .m-skeleton {
-  height: 100vh;
-  height: 100dvh;
+  /* 跟随滚动容器可视高度，而不是含浏览器地址栏的整屏，避免真机上内容偏下 */
+  height: 100%;
 }
 
 /* 评论打开时：锁定滚动，避免压缩当前卡片时跳动 */
