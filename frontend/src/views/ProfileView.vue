@@ -196,7 +196,7 @@ async function toggleFollow() {
 }
 
 function openPost(p) {
-  router.push({ path: '/feed', query: { postId: p.id } })
+  router.push({ path: '/feed', query: { postId: p.id, userId: profile.value.id } })
 }
 
 function openEdit() {

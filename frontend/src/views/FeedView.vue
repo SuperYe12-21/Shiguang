@@ -28,10 +28,10 @@
 
         <div v-else-if="feed.error" class="m-empty">
           <p>{{ feed.error }}</p>
-          <button class="sg-btn-primary" @click="feed.loadFirstPage()">点击重试</button>
+          <button class="sg-btn-primary" @click="retryFeed()">点击重试</button>
         </div>
         <div v-else class="m-empty">
-          <p>还没有作品，去发布第一条拾光吧</p>
+          <p>{{ feed.mode === 'user' ? '该用户还没有发布作品' : '还没有作品，去发布第一条拾光吧' }}</p>
         </div>
       </main>
       <BottomNav @me="goMe" />
@@ -69,10 +69,10 @@
 
           <div v-else-if="feed.error" class="p-empty">
             <p>{{ feed.error }}</p>
-            <button class="sg-btn-primary" @click="feed.loadFirstPage()">点击重试</button>
+            <button class="sg-btn-primary" @click="retryFeed()">点击重试</button>
           </div>
           <div v-else class="p-empty">
-            <p>还没有作品，去发布第一条拾光吧</p>
+            <p>{{ feed.mode === 'user' ? '该用户还没有发布作品' : '还没有作品，去发布第一条拾光吧' }}</p>
           </div>
         </div>
       </div>
@@ -122,28 +122,76 @@ let keydownHandler = null
 let wheelLocked = false
 let wheelTimer = null
 
-onMounted(async () => {
-  if (!feed.posts.length && !feed.loading) {
-    await feed.loadFirstPage()
+async function locatePost(postId) {
+  const found = feed.posts.findIndex((p) => p.id === postId)
+  if (found >= 0) {
+    currentIndex.value = found
+    await scrollToIndex(found)
+    return
   }
-  const postId = Number(route.query.postId || '')
-  if (postId) {
-    const found = feed.posts.findIndex((p) => p.id === postId)
-    if (found >= 0) {
-      currentIndex.value = found
-    } else {
-      try {
-        const detail = await fetchPostDetail(postId)
-        if (detail) {
-          feed.posts.unshift(detail)
-          currentIndex.value = 0
-        }
-      } catch (e) {
-        // 作品不存在或已删除，忽略
-      }
+  if (feed.mode === 'user' && feed.posts.length) {
+    // 用户模式下未找到（作品可能不在首页），停留在列表第一条
+    currentIndex.value = 0
+    await scrollToIndex(0)
+    return
+  }
+  try {
+    const detail = await fetchPostDetail(postId)
+    if (detail) {
+      feed.posts.unshift(detail)
+      currentIndex.value = 0
     }
-    router.replace({ query: {} })
+  } catch (e) {
+    // 作品不存在或已删除，忽略
   }
+}
+
+function scrollToIndex(index) {
+  return nextTick(() => {
+    const el = scrollEl.value
+    if (el && !isPc.value) {
+      el.scrollTo({ top: index * Math.max(el.clientHeight, 1) })
+    }
+  })
+}
+
+function retryFeed() {
+  if (feed.mode === 'user') {
+    feed.loadUserFirstPage(feed.scopeUserId)
+  } else {
+    feed.loadFirstPage()
+  }
+}
+
+
+async function initFeed() {
+  const postId = Number(route.query.postId || '')
+  const userId = Number(route.query.userId || '')
+
+  // 来自个人主页：只加载该用户的视频
+  if (userId) {
+    if (feed.mode !== 'user' || feed.scopeUserId !== userId) {
+      feed.reset()
+      await feed.loadUserFirstPage(userId)
+    }
+    if (postId) {
+      await locatePost(postId)
+    }
+  } else {
+    if (feed.mode !== 'home') {
+      feed.reset()
+      await feed.loadFirstPage()
+    } else if (!feed.posts.length && !feed.loading) {
+      await feed.loadFirstPage()
+    }
+    if (postId) {
+      await locatePost(postId)
+    }
+  }
+}
+
+onMounted(async () => {
+  await initFeed()
   resizeHandler = () => {
     if (!isPc.value) {
       const el = scrollEl.value
@@ -167,6 +215,14 @@ onMounted(async () => {
   }
   window.addEventListener('keydown', keydownHandler)
 })
+
+// 路由参数变化（主页点作品/底部首页）时重新初始化
+watch(
+  () => route.query,
+  () => {
+    initFeed()
+  }
+)
 
 onBeforeUnmount(() => {
   if (resizeHandler) window.removeEventListener('resize', resizeHandler)
