@@ -4,7 +4,9 @@ const routes = [
   { path: '/', redirect: '/feed' },
   { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
   { path: '/feed', name: 'feed', component: () => import('../views/FeedView.vue') },
-  { path: '/publish', name: 'publish', component: () => import('../views/PublishView.vue'), meta: { requiresAuth: true } }
+  { path: '/publish', name: 'publish', component: () => import('../views/PublishView.vue'), meta: { requiresAuth: true } },
+  { path: '/me', name: 'me', component: () => import('../views/ProfileView.vue'), meta: { requiresAuth: true } },
+  { path: '/user/:id', name: 'user', component: () => import('../views/ProfileView.vue') }
 ]
 
 const router = createRouter({

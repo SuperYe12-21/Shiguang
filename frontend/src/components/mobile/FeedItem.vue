@@ -33,7 +33,7 @@
 
     <!-- 左下：作者与文案 -->
     <div class="feed-meta">
-      <div class="meta-author">
+      <div class="meta-author" @click="$emit('author')">
         <img class="avatar" :src="author.avatarUrl || fallbackAvatar" alt="avatar" />
         <span class="nickname">{{ author.nickname || '拾光用户' }}</span>
       </div>
@@ -100,7 +100,7 @@ const props = defineProps({
   active: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['like', 'comment', 'share', 'follow'])
+const emit = defineEmits(['like', 'comment', 'share', 'follow', 'author'])
 
 const videoEl = ref(null)
 const muted = ref(false)
@@ -368,6 +368,8 @@ section.feed-item.item-compact .action-rail {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+  cursor: pointer;
+  width: fit-content;
 }
 
 .avatar {

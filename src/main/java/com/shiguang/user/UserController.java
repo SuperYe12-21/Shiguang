@@ -26,7 +26,7 @@ public class UserController {
 
     @GetMapping("/me")
     public R<UserVO> me() {
-        return R.ok(UserVO.from(userService.getById(SecurityUtils.getUserId())));
+        return R.ok(userService.toVO(userService.getById(SecurityUtils.getUserId())));
     }
 
     @GetMapping("/{id}")
@@ -62,6 +62,6 @@ public class UserController {
                 request.nickname(),
                 request.avatarUrl() == null ? "" : request.avatarUrl(),
                 request.bio() == null ? "" : request.bio());
-        return R.ok(UserVO.from(updated));
+        return R.ok(userService.toVO(updated));
     }
 }

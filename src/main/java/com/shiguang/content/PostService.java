@@ -142,7 +142,10 @@ public class PostService {
                 .author(PostVO.Author.builder()
                         .id(author.getId())
                         .nickname(author.getNickname())
-                        .avatarUrl(author.getAvatarUrl())
+                        .avatarUrl(author.getAvatarUrl() == null || author.getAvatarUrl().isBlank()
+                                || author.getAvatarUrl().startsWith("http")
+                                ? author.getAvatarUrl()
+                                : storageService.presignedGetUrl(author.getAvatarUrl()))
                         .build());
         if (!isBlank(post.getVideoObject())) {
             builder.videoUrl(storageService.presignedGetUrl(post.getVideoObject()));

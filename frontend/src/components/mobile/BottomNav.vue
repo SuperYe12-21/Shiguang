@@ -1,6 +1,6 @@
 <template>
   <nav class="bottom-nav sg-glass">
-    <button class="nav-item" :class="{ active: name === 'home' }" @click="go('/feed')">
+    <button class="nav-item" :class="{ active: active === 'home' }" @click="go('/feed')">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
         <path d="M12 3l10 9h-3v9h-5v-6h-4v6H5v-9H2l10-9z" />
       </svg>
@@ -33,7 +33,7 @@
       <span>消息</span>
     </button>
 
-    <button class="nav-item" @click="$emit('me')">
+    <button class="nav-item" :class="{ active: active === 'me' }" @click="$emit('me')">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
       </svg>
@@ -48,7 +48,9 @@ import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const emit = defineEmits(['me'])
-const name = 'home'
+const props = defineProps({
+  active: { type: String, default: 'home' }
+})
 
 function go(path) {
   router.push(path)

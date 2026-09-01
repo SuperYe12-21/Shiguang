@@ -66,7 +66,7 @@
 
     <!-- 左下：作者与文案 -->
     <div class="meta">
-      <div class="meta-author">
+      <div class="meta-author" @click="$emit('author')">
         <img class="avatar" :src="author.avatarUrl || fallbackAvatar" alt="avatar" />
         <span class="nickname">{{ author.nickname || '拾光用户' }}</span>
         <button v-if="!author.following" class="follow-btn" @click.stop="$emit('follow')">关注</button>
@@ -118,7 +118,7 @@ const props = defineProps({
   active: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['like', 'comment', 'share', 'follow'])
+const emit = defineEmits(['like', 'comment', 'share', 'follow', 'author'])
 
 const videoEl = ref(null)
 const playing = ref(false)
@@ -483,6 +483,8 @@ onBeforeUnmount(() => {
   gap: 12px;
   margin-bottom: 12px;
   pointer-events: auto;
+  cursor: pointer;
+  width: fit-content;
 }
 
 .avatar {

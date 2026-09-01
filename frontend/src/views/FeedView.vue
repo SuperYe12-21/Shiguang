@@ -18,6 +18,7 @@
             @comment="onComment(post)"
             @share="onShare(post)"
             @follow="onFollow(post)"
+            @author="goAuthor(post)"
           />
           <div class="m-end">
             <span v-if="feed.loadingMore">加载中…</span>
@@ -33,7 +34,7 @@
           <p>还没有作品，去发布第一条拾光吧</p>
         </div>
       </main>
-      <BottomNav @me="accountOpen = true" />
+      <BottomNav @me="goMe" />
     </template>
 
     <!-- PC：抖音式一屏一卡，滚轮翻页 -->
@@ -58,6 +59,7 @@
               @comment="onComment(post)"
               @share="onShare(post)"
               @follow="onFollow(post)"
+              @author="goAuthor(post)"
             />
             <div class="p-end">
               <span v-if="feed.loadingMore">加载中…</span>
@@ -81,33 +83,32 @@
         <button class="p-nav-btn on" @click="router.push('/feed')">首页</button>
         <button class="p-nav-btn" @click="router.push('/publish')">发布</button>
         <button class="p-nav-btn" @click="todo('消息')">消息</button>
-        <button class="p-nav-btn" @click="accountOpen = true">我的</button>
+        <button class="p-nav-btn" @click="goMe">我的</button>
       </nav>
     </template>
 
     <CommentPanel v-if="commentPost" :post="commentPost" @close="commentPost = null" />
-    <AccountMenu v-if="accountOpen" @close="accountOpen = false" />
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useFeedStore } from '../stores/feed'
 import { useAuthStore } from '../stores/auth'
 import { followUser, unfollowUser } from '../api/user'
+import { fetchPostDetail } from '../api/posts'
 import FeedItem from '../components/mobile/FeedItem.vue'
 import BottomNav from '../components/mobile/BottomNav.vue'
 import PcFeedCard from '../components/pc/PcFeedCard.vue'
 import CommentPanel from '../components/CommentPanel.vue'
-import AccountMenu from '../components/AccountMenu.vue'
 
+const route = useRoute()
 const router = useRouter()
 const feed = useFeedStore()
 const auth = useAuthStore()
 const commentPost = ref(null)
-const accountOpen = ref(false)
 
 const scrollEl = ref(null)
 const currentIndex = ref(0)
@@ -124,6 +125,24 @@ let wheelTimer = null
 onMounted(async () => {
   if (!feed.posts.length && !feed.loading) {
     await feed.loadFirstPage()
+  }
+  const postId = Number(route.query.postId || '')
+  if (postId) {
+    const found = feed.posts.findIndex((p) => p.id === postId)
+    if (found >= 0) {
+      currentIndex.value = found
+    } else {
+      try {
+        const detail = await fetchPostDetail(postId)
+        if (detail) {
+          feed.posts.unshift(detail)
+          currentIndex.value = 0
+        }
+      } catch (e) {
+        // 作品不存在或已删除，忽略
+      }
+    }
+    router.replace({ query: {} })
   }
   resizeHandler = () => {
     if (!isPc.value) {
@@ -198,6 +217,20 @@ function goNext() {
 function goPrev() {
   if (currentIndex.value <= 0) return
   currentIndex.value -= 1
+}
+
+function goMe() {
+  if (!auth.isLoggedIn) {
+    router.push('/login')
+    return
+  }
+  router.push('/me')
+}
+
+function goAuthor(post) {
+  const author = post.author
+  if (!author || !author.id) return
+  router.push('/user/' + author.id)
 }
 
 function onComment(post) {

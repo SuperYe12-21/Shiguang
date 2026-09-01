@@ -5,6 +5,7 @@ import com.shiguang.common.BizException;
 import com.shiguang.content.Post;
 import com.shiguang.content.PostMapper;
 import com.shiguang.content.PostStatus;
+import com.shiguang.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,7 @@ public class UserService {
     private final UserMapper userMapper;
     private final FollowService followService;
     private final PostMapper postMapper;
+    private final StorageService storageService;
 
     @Transactional
     public User findOrCreateByPhone(String phone) {
@@ -44,7 +46,7 @@ public class UserService {
         return UserProfileVO.builder()
                 .id(user.getId())
                 .nickname(user.getNickname())
-                .avatarUrl(user.getAvatarUrl())
+                .avatarUrl(toAvatarUrl(user.getAvatarUrl()))
                 .bio(user.getBio())
                 .createdAt(user.getCreatedAt())
                 .followerCount(followService.followerCount(userId))
@@ -54,6 +56,27 @@ public class UserService {
                         .eq(Post::getStatus, PostStatus.PUBLISHED)))
                 .followedByMe(followService.isFollowing(viewerId, userId))
                 .build();
+    }
+
+    /** 用户资料 VO：头像对象名实时转预签名 URL */
+    public UserVO toVO(User user) {
+        return new UserVO(
+                user.getId(),
+                user.getPhone(),
+                user.getNickname(),
+                toAvatarUrl(user.getAvatarUrl()),
+                user.getBio(),
+                user.getCreatedAt());
+    }
+
+    private String toAvatarUrl(String avatarUrl) {
+        if (avatarUrl == null || avatarUrl.isBlank()) {
+            return avatarUrl;
+        }
+        if (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) {
+            return avatarUrl;
+        }
+        return storageService.presignedGetUrl(avatarUrl);
     }
 
     @Transactional
