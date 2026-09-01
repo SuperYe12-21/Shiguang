@@ -268,11 +268,12 @@ function formatCount(n) {
   scroll-snap-align: start;
   overflow: hidden;
   background: #141210;
-  transition: height 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-/* 评论打开时：当前作品压缩到屏幕上方，只保留媒体主体与评论区（抖音式） */
-section.feed-item.item-compact {
+/* 评论打开时：当前作品的媒体主体压缩到屏幕上方，只保留媒体与评论区（抖音式）。
+   保持卡片高度不变，避免最后一条视频因滚动位置被钳制而无法正常压缩 */
+section.feed-item.item-compact .feed-video,
+section.feed-item.item-compact .feed-image {
   height: 38vh;
   height: 38dvh;
 }
@@ -282,11 +283,21 @@ section.feed-item.item-compact .action-rail {
   display: none;
 }
 
+/* 压缩后播放遮罩/失败提示跟随媒体区域，而不是整屏居中 */
+section.feed-item.item-compact .play-mask-m,
+section.feed-item.item-compact .video-fail {
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 38vh;
+  height: 38dvh;
+}
+
 .feed-video {
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
+  transition: height 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .feed-image {
@@ -298,6 +309,7 @@ section.feed-item.item-compact .action-rail {
   justify-content: center;
   background: #141210;
   overflow: hidden;
+  transition: height 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .img-swiper {

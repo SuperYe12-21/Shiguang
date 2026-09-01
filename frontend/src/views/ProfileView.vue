@@ -4,6 +4,7 @@
     <header class="pf-top">
       <button class="pf-back" aria-label="返回" @click="goBack">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        <span v-if="isPc" class="pf-back-text">返回</span>
       </button>
       <span class="pf-top-title">{{ profile.nickname || '个人主页' }}</span>
       <span class="pf-top-spacer" />
@@ -351,6 +352,48 @@ onBeforeUnmount(() => {
 
 .pf-back:hover {
   background: rgba(255, 255, 255, 0.16);
+}
+
+/* PC：返回按钮改为胶囊样式，带文字并留出边距，不再孤零零贴在角落 */
+@media (min-width: 768px) {
+  .pf-top {
+    padding: 12px 28px;
+  }
+
+  .pf-back {
+    width: auto;
+    height: 38px;
+    padding: 0 18px 0 10px;
+    border-radius: 999px;
+    gap: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.2s, border-color 0.2s;
+  }
+
+  .pf-back:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+
+  .pf-back-text {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .pf-top-title {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 40vw;
+  }
+
+  .pf-top-spacer {
+    display: none;
+  }
 }
 
 .pf-top-title {
