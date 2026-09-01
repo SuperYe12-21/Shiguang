@@ -11,6 +11,8 @@
       playsinline
       preload="metadata"
       @click="togglePlay"
+      @play="playing = true"
+      @pause="playing = false"
       @error="videoFailed = true"
     />
     <div v-else class="feed-image">
@@ -73,6 +75,12 @@
       </button>
     </div>
 
+    <div v-if="post.type === 'VIDEO' && !videoFailed && !playing" class="play-mask-m" @click="togglePlay">
+      <span class="play-icon-m">▶</span>
+    </div>
+
+    <div v-if="post.type === 'VIDEO' && showSoundTip" class="sound-tip" @click.stop="togglePlay">点按视频开启声音</div>
+
     <div v-if="post.type === 'VIDEO' && videoFailed" class="video-fail">
       <span>视频加载失败</span>
     </div>
@@ -93,6 +101,10 @@ const emit = defineEmits(['like', 'comment', 'share', 'follow'])
 
 const videoEl = ref(null)
 const muted = ref(false)
+const playing = ref(false)
+const soundBlocked = ref(false)
+const showSoundTip = ref(false)
+let soundTipTimer = null
 const imgFailed = ref(false)
 const videoFailed = ref(false)
 
@@ -186,8 +198,14 @@ function tryPlay(v) {
   if (p && p.catch) {
     p.catch(() => {
       if (!v.muted) {
+        soundBlocked.value = true
         muted.value = true
         v.muted = true
+        showSoundTip.value = true
+        if (soundTipTimer) clearTimeout(soundTipTimer)
+        soundTipTimer = setTimeout(() => {
+          showSoundTip.value = false
+        }, 4000)
         v.play().catch(() => {})
       }
     })
@@ -197,6 +215,22 @@ function tryPlay(v) {
 function togglePlay() {
   const v = videoEl.value
   if (!v) return
+  if (v.paused && soundBlocked.value) {
+    soundBlocked.value = false
+    showSoundTip.value = false
+    muted.value = false
+    v.muted = false
+    const p = v.play()
+    if (p && p.catch) {
+      p.catch(() => {
+        soundBlocked.value = true
+        muted.value = true
+        v.muted = true
+        v.play().catch(() => {})
+      })
+    }
+    return
+  }
   if (v.paused) {
     tryPlay(v)
   } else {
@@ -308,9 +342,9 @@ function formatCount(n) {
   position: absolute;
   left: 0;
   right: 88px;
-  bottom: 0;
-  padding: 28px 16px 12px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
+  bottom: calc(var(--sg-nav-h) + env(safe-area-inset-bottom) + 4px);
+  padding: 18px 16px 8px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
   color: #fff;
 }
 
@@ -357,6 +391,9 @@ function formatCount(n) {
   font-size: 15px;
   font-weight: 500;
   margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .desc {
@@ -372,7 +409,7 @@ function formatCount(n) {
 .action-rail {
   position: absolute;
   right: 10px;
-  bottom: 92px;
+  bottom: calc(var(--sg-nav-h) + env(safe-area-inset-bottom) + 96px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -425,6 +462,52 @@ function formatCount(n) {
 
 .img-fallback-text {
   font-size: 13px;
+}
+
+.play-mask-m {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.22);
+  z-index: 4;
+}
+
+.play-icon-m {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 5px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.sound-tip {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  padding: 8px 14px;
+  border-radius: var(--sg-radius-full);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 13px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  animation: sg-fade-in 0.25s ease;
+}
+
+@keyframes sg-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .video-fail {
