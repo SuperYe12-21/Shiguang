@@ -14,7 +14,7 @@
           <div v-else-if="!comments.length" class="cp-state">还没有评论，来抢沙发吧～</div>
 
           <div v-for="c in comments" :key="c.id" class="cp-item">
-            <img class="cp-avatar" :src="c.author && c.author.avatarUrl ? c.author.avatarUrl : fallbackAvatar(c)" alt="头像" />
+            <img class="cp-avatar" :src="avatarSrc(c)" @error="onAvatarError(c)" alt="头像" />
             <div class="cp-main">
               <div class="cp-meta">
                 <span class="cp-name">{{ c.author ? c.author.nickname : '拾光用户' }}</span>
@@ -231,6 +231,15 @@ function fallbackAvatar(c) {
   const hue = (((c.author && c.author.id) || 0) * 47) % 360
   const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><rect width='96' height='96' rx='48' fill='hsl(" + hue + ",60%,86%)'/><text x='48' y='64' font-size='42' text-anchor='middle' fill='hsl(" + hue + ",45%,42%)' font-family='sans-serif'>" + ch + "</text></svg>"
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg)
+}
+
+function avatarSrc(c) {
+  if (c._avatarBroken) return fallbackAvatar(c)
+  return c.author && c.author.avatarUrl ? c.author.avatarUrl : fallbackAvatar(c)
+}
+
+function onAvatarError(c) {
+  c._avatarBroken = true
 }
 </script>
 

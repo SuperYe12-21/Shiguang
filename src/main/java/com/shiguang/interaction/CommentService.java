@@ -6,6 +6,7 @@ import com.shiguang.common.BizException;
 import com.shiguang.common.PageVO;
 import com.shiguang.content.Post;
 import com.shiguang.content.PostMapper;
+import com.shiguang.storage.StorageService;
 import com.shiguang.user.User;
 import com.shiguang.user.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class CommentService {
     private final UserMapper userMapper;
     private final LikeService likeService;
     private final ApplicationEventPublisher eventPublisher;
+    private final StorageService storageService;
 
     public PageVO<CommentVO> list(Long postId, Long cursorId, int limit, Long viewerId) {
         likeService.requirePublishedPost(postId);
@@ -128,7 +130,7 @@ public class CommentService {
                 : CommentVO.Author.builder()
                         .id(author.getId())
                         .nickname(author.getNickname())
-                        .avatarUrl(author.getAvatarUrl())
+                        .avatarUrl(toAvatarUrl(author.getAvatarUrl()))
                         .build();
         return CommentVO.builder()
                 .id(comment.getId())
@@ -141,6 +143,14 @@ public class CommentService {
                 .author(authorVO)
                 .createdAt(comment.getCreatedAt())
                 .build();
+    }
+
+    private String toAvatarUrl(String avatarUrl) {
+        if (avatarUrl == null || avatarUrl.isBlank()
+                || avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) {
+            return avatarUrl;
+        }
+        return storageService.presignedGetUrl(avatarUrl);
     }
 
     private static int normalizeLimit(int limit) {

@@ -3,6 +3,7 @@ package com.shiguang.user;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.shiguang.common.BizException;
 import com.shiguang.common.PageVO;
+import com.shiguang.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -27,6 +28,7 @@ public class FollowService {
 
     private final FollowMapper followMapper;
     private final UserMapper userMapper;
+    private final StorageService storageService;
 
     /** 关注（重复关注幂等） */
     public FollowVO follow(Long followerId, Long followeeId) {
@@ -142,11 +144,28 @@ public class FollowService {
                     .map(userIdExtractor)
                     .map(users::get)
                     .filter(java.util.Objects::nonNull)
-                    .map(UserPublicVO::from)
+                    .map(this::toPublicVO)
                     .toList();
             nextCursor = hasMore ? page.get(page.size() - 1).getId().toString() : null;
         }
         return PageVO.<UserPublicVO>builder().items(items).nextCursor(nextCursor).hasMore(hasMore).build();
+    }
+
+    private UserPublicVO toPublicVO(User user) {
+        return new UserPublicVO(
+                user.getId(),
+                user.getNickname(),
+                toAvatarUrl(user.getAvatarUrl()),
+                user.getBio(),
+                user.getCreatedAt());
+    }
+
+    private String toAvatarUrl(String avatarUrl) {
+        if (avatarUrl == null || avatarUrl.isBlank()
+                || avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) {
+            return avatarUrl;
+        }
+        return storageService.presignedGetUrl(avatarUrl);
     }
 
     private static int normalizeLimit(int limit) {
