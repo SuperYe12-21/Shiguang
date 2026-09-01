@@ -1,6 +1,26 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
+
+function fixMediaHost(value) {
+  const host = location.hostname
+  if (!host || host === '127.0.0.1' || host === 'localhost') return value
+  if (typeof value === 'string') {
+    return value
+      .split('http://127.0.0.1:9000').join(location.origin)
+      .split('http://localhost:9000').join(location.origin)
+  }
+  if (Array.isArray(value)) {
+    return value.map(fixMediaHost)
+  }
+  if (value && typeof value === 'object') {
+    const out = {}
+    for (const k of Object.keys(value)) out[k] = fixMediaHost(value[k])
+    return out
+  }
+  return value
+}
+
 const http = axios.create({
   baseURL: '/api',
   timeout: 15000
@@ -17,6 +37,9 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (res) => {
     const body = res.data
+    if (body && body.code === 0 && body.data) {
+      body.data = fixMediaHost(body.data)
+    }
     if (body && body.code !== 0) {
       ElMessage.error(body.message || '请求失败')
       return Promise.reject(new Error(body.message || '请求失败'))

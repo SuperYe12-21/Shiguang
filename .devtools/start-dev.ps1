@@ -16,7 +16,7 @@ function Start-DevService {
 Start-DevService -Name "Redis" -File "$root\redis\redis-server.exe" -Arguments @("$root\redis\redis.windows.conf") -CheckPort 6379
 
 # MinIO 9000 / 9001
-Start-DevService -Name "MinIO" -File "$root\minio\minio.exe" -Arguments @("server", "$root\minio-data", "--address", "127.0.0.1:9000", "--console-address", "127.0.0.1:9001") -CheckPort 9000
+Start-DevService -Name "MinIO" -File "$root\minio\minio.exe" -Arguments @("server", "$root\minio-data", "--address", "0.0.0.0:9000", "--console-address", "0.0.0.0:9001") -CheckPort 9000
 
 # RabbitMQ 5672 (start frontend node when Windows service is unavailable)
 $rmq = Get-NetTCPConnection -LocalPort 5672 -State Listen -ErrorAction SilentlyContinue

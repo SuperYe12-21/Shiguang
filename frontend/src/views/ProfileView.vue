@@ -2,7 +2,7 @@
   <div class="profile-page">
     <!-- 顶栏 -->
     <header class="pf-top">
-      <button class="pf-back" aria-label="返回" @click="router.back()">
+      <button class="pf-back" aria-label="返回" @click="goBack">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
       </button>
       <span class="pf-top-title">{{ profile.nickname || '个人主页' }}</span>
@@ -192,6 +192,17 @@ async function toggleFollow() {
     profile.value.followerCount = (profile.value.followerCount || 0) + (data.following ? 1 : -1)
   } catch (e) {
     // 错误已提示
+  }
+}
+
+function goBack() {
+  const state = window.history.state
+  const backPath = state && state.back
+  // 上一页是作品流（/feed?userId=...）时，穿透它直达首页
+  if (typeof backPath === 'string' && backPath.startsWith('/feed') && backPath.includes('userId=')) {
+    router.replace('/feed')
+  } else {
+    router.back()
   }
 }
 
