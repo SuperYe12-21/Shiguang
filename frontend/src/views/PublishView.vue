@@ -466,7 +466,7 @@ onBeforeUnmount(() => {
 }
 
 .pub-submit.on {
-  background: var(--sg-gradient-deep);
+  background: var(--sg-primary);
   box-shadow: 0 8px 20px rgba(232, 75, 75, 0.35);
   transform: translateY(-1px);
 }
@@ -476,6 +476,7 @@ onBeforeUnmount(() => {
 }
 
 .pub-submit.on:not(:disabled):hover {
+  background: var(--sg-primary-deep);
   transform: translateY(-2px) scale(1.01);
 }
 

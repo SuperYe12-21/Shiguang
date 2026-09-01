@@ -101,7 +101,7 @@ function todo(label) {
   height: 42px;
   margin-top: -18px;
   border-radius: 50%;
-  background: var(--sg-gradient-deep);
+  background: var(--sg-primary);
   color: #fff;
   display: flex;
   align-items: center;
