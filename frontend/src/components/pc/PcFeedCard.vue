@@ -40,6 +40,7 @@
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" /></svg>
       </button>
+      <span v-if="post.type === 'IMAGE' && postImages.length > 1" class="multi-badge">1/{{ postImages.length }}</span>
       <div v-if="post.type === 'IMAGE' && !imgFailed && cover" class="zoom-hint">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z" /></svg>
         查看大图
@@ -83,7 +84,12 @@
 
     <Teleport to="body">
       <div v-if="lightboxOpen" class="sg-lightbox" @click.self="closeLightbox">
-        <img class="sg-lightbox-img" :src="cover" :alt="post.title || '作品'" />
+        <div class="lb-stage" @click="closeLightbox" :style="{ transform: 'translateX(-' + lightboxIndex * 100 + '%)' }">
+          <img v-for="(img, i) in postImages" :key="i" class="sg-lightbox-img" :src="img" :alt="post.title || '作品'" />
+        </div>
+        <button v-if="postImages.length > 1 && lightboxIndex > 0" class="lb-arrow lb-prev" aria-label="上一张" @click.stop="lbPrev">‹</button>
+        <button v-if="postImages.length > 1 && lightboxIndex < postImages.length - 1" class="lb-arrow lb-next" aria-label="下一张" @click.stop="lbNext">›</button>
+        <div v-if="postImages.length > 1" class="lb-count">{{ lightboxIndex + 1 }}/{{ postImages.length }}</div>
         <button class="sg-lightbox-close" aria-label="关闭" @click="closeLightbox">×</button>
       </div>
     </Teleport>
@@ -110,6 +116,19 @@ let escHandler = null
 
 const author = computed(() => props.post.author || {})
 const cover = computed(() => props.post.coverUrl || (props.post.images && props.post.images[0]) || '')
+const postImages = computed(() => {
+  if (props.post.images && props.post.images.length) return props.post.images
+  return props.post.coverUrl ? [props.post.coverUrl] : []
+})
+const lightboxIndex = ref(0)
+
+function lbPrev() {
+  if (lightboxIndex.value > 0) lightboxIndex.value -= 1
+}
+
+function lbNext() {
+  if (lightboxIndex.value < postImages.value.length - 1) lightboxIndex.value += 1
+}
 
 const fallbackAvatar = computed(() => {
   const name = author.value.nickname || '拾'
@@ -163,9 +182,12 @@ function onMediaClick() {
 
 function openLightbox() {
   lightboxOpen.value = true
+  lightboxIndex.value = 0
   document.body.style.overflow = 'hidden'
   escHandler = (e) => {
     if (e.key === 'Escape') closeLightbox()
+    else if (e.key === 'ArrowLeft') lbPrev()
+    else if (e.key === 'ArrowRight') lbNext()
   }
   document.addEventListener('keydown', escHandler)
 }
@@ -492,6 +514,78 @@ onBeforeUnmount(() => {
 
 .rail-btn.liked {
   color: #ff4757;
+}
+
+.multi-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 12px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.lb-stage {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.lb-stage .sg-lightbox-img {
+  flex: 0 0 100%;
+  max-width: 100vw;
+  max-height: 100vh;
+  object-fit: contain;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.lb-arrow {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 30px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  z-index: 3001;
+}
+
+.lb-arrow:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.lb-prev {
+  left: 28px;
+}
+
+.lb-next {
+  right: 28px;
+}
+
+.lb-count {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 13px;
+  z-index: 3001;
 }
 
 .sg-lightbox {

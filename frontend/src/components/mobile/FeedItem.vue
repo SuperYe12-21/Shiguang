@@ -14,7 +14,15 @@
       @error="videoFailed = true"
     />
     <div v-else class="feed-image">
-      <img v-if="!imgFailed" :src="cover" :alt="post.title || '作品'" loading="lazy" @error="imgFailed = true" />
+      <div v-if="!imgFailed" class="img-swiper" @touchstart.passive="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd">
+        <div class="img-track" :style="{ transform: 'translateX(-' + imgIndex * 100 + '%)' }">
+          <img v-for="(img, i) in postImages" :key="i" :src="img" :alt="post.title || '作品'" draggable="false" @error="imgFailed = true" />
+        </div>
+        <span v-if="postImages.length > 1" class="img-count">{{ imgIndex + 1 }}/{{ postImages.length }}</span>
+        <div v-if="postImages.length > 1" class="img-dots">
+          <span v-for="(img, i) in postImages" :key="i" class="dot" :class="{ on: i === imgIndex }" />
+        </div>
+      </div>
       <div v-else class="img-fallback">
         <span class="img-fallback-mark">拾</span>
         <span class="img-fallback-text">图片暂时无法加载</span>
@@ -95,6 +103,47 @@ const videoFailed = ref(false)
 const author = computed(() => props.post.author || {})
 const cover = computed(() => props.post.coverUrl || (props.post.images && props.post.images[0]) || '')
 
+const postImages = computed(() => {
+  if (props.post.images && props.post.images.length) return props.post.images
+  return props.post.coverUrl ? [props.post.coverUrl] : []
+})
+const imgIndex = ref(0)
+let touchStartX = null
+let touchStartY = null
+let touchMoved = false
+
+watch(postImages, () => {
+  if (imgIndex.value >= postImages.value.length) imgIndex.value = 0
+})
+
+function onTouchStart(e) {
+  if (postImages.value.length < 2) return
+  touchStartX = e.touches[0].clientX
+  touchStartY = e.touches[0].clientY
+  touchMoved = false
+}
+
+function onTouchMove(e) {
+  if (touchStartX == null) return
+  const dx = e.touches[0].clientX - touchStartX
+  const dy = e.touches[0].clientY - touchStartY
+  if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+    e.preventDefault()
+    touchMoved = true
+  }
+}
+
+function onTouchEnd(e) {
+  if (!touchMoved || touchStartX == null) return
+  const dx = e.changedTouches[0].clientX - touchStartX
+  const total = postImages.value.length
+  if (dx < -40 && imgIndex.value < total - 1) imgIndex.value += 1
+  else if (dx > 40 && imgIndex.value > 0) imgIndex.value -= 1
+  touchStartX = null
+  touchStartY = null
+  touchMoved = false
+}
+
 const fallbackAvatar = computed(() => {
   const name = author.value.nickname || '拾'
   const ch = name.charAt(0)
@@ -171,12 +220,72 @@ function formatCount(n) {
 }
 
 .feed-image {
+  position: relative;
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #141210;
+  overflow: hidden;
+}
+
+.img-swiper {
+  width: 100%;
+  height: 100%;
+  touch-action: pan-y;
+}
+
+.img-track {
+  display: flex;
+  height: 100%;
+  transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.img-track img {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.img-count {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 12px;
+  z-index: 3;
+}
+
+.img-dots {
+  position: absolute;
+  bottom: 108px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  z-index: 3;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  transition: all 0.2s;
+}
+
+.dot.on {
+  width: 16px;
+  border-radius: 3px;
+  background: #fff;
 }
 
 .feed-image img {
