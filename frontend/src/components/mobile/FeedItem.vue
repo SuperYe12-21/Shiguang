@@ -44,8 +44,8 @@
     <!-- 右侧互动栏 -->
     <div class="action-rail">
       <div class="rail-avatar-wrap">
-        <img class="rail-avatar" :src="author.avatarUrl || fallbackAvatar" alt="avatar" />
-        <span v-if="!author.following" class="rail-follow" title="关注" @click="$emit('follow')">+</span>
+        <img class="rail-avatar" :src="author.avatarUrl || fallbackAvatar" alt="avatar" @click="$emit('author')" />
+        <span v-if="!author.following && !isMine" class="rail-follow" title="关注" @click="$emit('follow')">+</span>
       </div>
       <button class="rail-btn" @click="$emit('like')">
         <span class="rail-icon" :class="{ liked: post.liked }">
@@ -94,6 +94,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useAuthStore } from '../../stores/auth'
 
 const props = defineProps({
   post: { type: Object, required: true },
@@ -101,6 +102,16 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['like', 'comment', 'share', 'follow', 'author'])
+
+const auth = useAuthStore()
+const isMine = ref(false)
+watch(
+  [() => auth.userId, () => props.post?.author?.id],
+  () => {
+    isMine.value = !!auth.userId && props.post?.author?.id === auth.userId
+  },
+  { immediate: true }
+)
 
 const videoEl = ref(null)
 const muted = ref(false)
@@ -426,6 +437,7 @@ section.feed-item.item-compact .action-rail {
 }
 
 .rail-avatar {
+  cursor: pointer;
   width: 48px;
   height: 48px;
   border-radius: 50%;

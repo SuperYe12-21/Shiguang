@@ -2,6 +2,13 @@
   <div class="feed-page" :class="{ 'is-pc': isPc, 'has-comment': !!commentPost }">
     <!-- 移动端：全屏竖屏流 + 底部导航 -->
     <template v-if="!isPc">
+      <div v-if="feed.mode === 'user'" class="m-back-bar">
+        <button class="m-back-btn" @click="backToProfile">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+          返回
+        </button>
+        <span class="m-back-title">{{ scopeLabel }}</span>
+      </div>
       <main ref="scrollEl" class="m-scroll" @scroll.passive="onScroll">
         <template v-if="feed.loading">
           <div v-for="i in 3" :key="i" class="m-skeleton"></div>
@@ -79,6 +86,10 @@
 
       <!-- 顶部迷你导航 -->
       <nav class="p-topbar">
+        <button v-if="feed.mode === 'user'" class="p-back-btn" @click="backToProfile">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+          {{ scopeLabel }}
+        </button>
         <span class="p-logo">拾光</span>
         <button class="p-nav-btn on" @click="router.push('/feed')">首页</button>
         <button class="p-nav-btn" @click="router.push('/publish')">发布</button>
@@ -117,6 +128,13 @@ const isPc = computed(() => window.innerWidth >= 768)
 
 const currentPost = computed(() => feed.posts[currentIndex.value] || null)
 
+const scopeLabel = computed(() => {
+  if (feed.mode !== 'user') return ''
+  const nick = feed.posts[0]?.author?.nickname || ''
+  const isMe = !!auth.userId && feed.scopeUserId === auth.userId
+  return (isMe ? '我的' : (nick ? nick + ' 的' : '该用户')) + '主页'
+})
+
 let resizeHandler = null
 let keydownHandler = null
 let wheelLocked = false
@@ -153,6 +171,16 @@ function scrollToIndex(index) {
       el.scrollTo({ top: index * Math.max(el.clientHeight, 1) })
     }
   })
+}
+
+function backToProfile() {
+  const state = window.history.state
+  if (state && state.back) {
+    router.back()
+  } else {
+    const uid = feed.scopeUserId
+    router.replace(uid === auth.userId ? '/me' : '/user/' + uid)
+  }
 }
 
 function retryFeed() {
@@ -345,7 +373,42 @@ function todo(label) {
 }
 
 .m-scroll > .feed-item,
-.m-scroll > .m-skeleton {
+.m-scroll > /* 用户作品流：返回条 */
+.m-back-bar {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #fff;
+  font-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.m-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: #fff;
+  font-weight: 600;
+}
+
+.m-back-title {
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-skeleton {
   height: 100vh;
   height: 100dvh;
 }
@@ -469,6 +532,23 @@ function todo(label) {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.p-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.p-back-btn:hover {
+  background: rgba(255, 255, 255, 0.24);
 }
 
 .p-logo {

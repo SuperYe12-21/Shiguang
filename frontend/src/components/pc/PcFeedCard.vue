@@ -69,7 +69,7 @@
       <div class="meta-author" @click="$emit('author')">
         <img class="avatar" :src="author.avatarUrl || fallbackAvatar" alt="avatar" />
         <span class="nickname">{{ author.nickname || '拾光用户' }}</span>
-        <button v-if="!author.following" class="follow-btn" @click.stop="$emit('follow')">关注</button>
+        <button v-if="!author.following && !isMine" class="follow-btn" @click.stop="$emit('follow')">关注</button>
       </div>
       <p class="title">{{ post.title || '分享美好瞬间' }}</p>
       <p v-if="post.description" class="desc">{{ post.description }}</p>
@@ -79,8 +79,8 @@
     <!-- 右侧互动栏 -->
     <div class="rail">
       <div class="rail-avatar-wrap">
-        <img class="rail-avatar" :src="author.avatarUrl || fallbackAvatar" alt="avatar" />
-        <span v-if="!author.following" class="rail-follow" title="关注" @click="$emit('follow')">+</span>
+        <img class="rail-avatar" :src="author.avatarUrl || fallbackAvatar" alt="avatar" @click="$emit('author')" />
+        <span v-if="!author.following && !isMine" class="rail-follow" title="关注" @click="$emit('follow')">+</span>
       </div>
       <button class="rail-btn" :class="{ liked: post.liked }" @click="$emit('like')">
         <svg viewBox="0 0 24 24" width="34" height="34" :fill="post.liked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
@@ -112,6 +112,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useAuthStore } from '../../stores/auth'
 
 const props = defineProps({
   post: { type: Object, required: true },
@@ -119,6 +120,16 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['like', 'comment', 'share', 'follow', 'author'])
+
+const auth = useAuthStore()
+const isMine = ref(false)
+watch(
+  [() => auth.userId, () => props.post?.author?.id],
+  () => {
+    isMine.value = !!auth.userId && props.post?.author?.id === auth.userId
+  },
+  { immediate: true }
+)
 
 const videoEl = ref(null)
 const playing = ref(false)
