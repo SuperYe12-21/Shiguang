@@ -41,6 +41,13 @@ public class UserController {
         return R.ok(feedService.userPosts(id, SecurityUtils.getUserId(), cursor, limit));
     }
 
+    @GetMapping("/{id}/likes")
+    public R<PageVO<PostVO>> likes(@PathVariable Long id,
+                                   @RequestParam(required = false) String cursor,
+                                   @RequestParam(defaultValue = "10") int limit) {
+        return R.ok(feedService.userLikes(id, SecurityUtils.getUserId(), cursor, limit));
+    }
+
     @GetMapping("/{id}/followers")
     public R<PageVO<UserPublicVO>> followers(@PathVariable Long id,
                                              @RequestParam(required = false) Long cursor,

@@ -5,10 +5,13 @@ import com.shiguang.common.BizException;
 import com.shiguang.content.Post;
 import com.shiguang.content.PostMapper;
 import com.shiguang.content.PostStatus;
+import com.shiguang.interaction.LikeService;
 import com.shiguang.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -18,6 +21,7 @@ public class UserService {
     private final FollowService followService;
     private final PostMapper postMapper;
     private final StorageService storageService;
+    private final LikeService likeService;
 
     @Transactional
     public User findOrCreateByPhone(String phone) {
@@ -54,8 +58,25 @@ public class UserService {
                 .postCount(postMapper.selectCount(new LambdaQueryWrapper<Post>()
                         .eq(Post::getUserId, userId)
                         .eq(Post::getStatus, PostStatus.PUBLISHED)))
+                .likeCount(totalLikes(userId))
                 .followedByMe(followService.isFollowing(viewerId, userId))
                 .build();
+    }
+
+    private long totalLikes(Long userId) {
+        List<Post> posts = postMapper.selectList(new LambdaQueryWrapper<Post>()
+                .select(Post::getId, Post::getLikeCount)
+                .eq(Post::getUserId, userId)
+                .eq(Post::getStatus, PostStatus.PUBLISHED));
+        if (posts.isEmpty()) {
+            return 0;
+        }
+        long total = posts.stream()
+                .mapToLong(p -> p.getLikeCount() == null ? 0 : p.getLikeCount())
+                .sum();
+        total += likeService.postPendingDeltas(posts.stream().map(Post::getId).toList())
+                .values().stream().mapToLong(Integer::longValue).sum();
+        return Math.max(0, total);
     }
 
     /** 用户资料 VO：头像对象名实时转预签名 URL */

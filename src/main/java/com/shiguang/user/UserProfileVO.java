@@ -25,5 +25,7 @@ public class UserProfileVO {
 
     private Long postCount;
 
+    private Long likeCount;
+
     private Boolean followedByMe;
 }

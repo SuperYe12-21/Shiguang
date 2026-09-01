@@ -1,7 +1,7 @@
 <template>
   <div class="feed-page" :class="{ 'is-pc': isPc, 'has-comment': !!commentPost }">
     <!-- 移动端：全屏竖屏流 + 底部导航 -->
-    <div v-if="feed.mode === 'user'" class="m-back-bar">
+    <div v-if="feed.mode === 'user' || feed.mode === 'likes'" class="m-back-bar">
       <button class="m-back-btn" @click="backToProfile">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
         返回
@@ -38,7 +38,7 @@
           <button class="sg-btn-primary" @click="retryFeed()">点击重试</button>
         </div>
         <div v-else class="m-empty">
-          <p>{{ feed.mode === 'user' ? '该用户还没有发布作品' : '还没有作品，去发布第一条拾光吧' }}</p>
+          <p>{{ feed.mode === 'user' ? '该用户还没有发布作品' : feed.mode === 'likes' ? '还没有点赞的作品' : '还没有作品，去发布第一条拾光吧' }}</p>
         </div>
       </main>
       <BottomNav @me="goMe" />
@@ -79,7 +79,7 @@
             <button class="sg-btn-primary" @click="retryFeed()">点击重试</button>
           </div>
           <div v-else class="p-empty">
-            <p>{{ feed.mode === 'user' ? '该用户还没有发布作品' : '还没有作品，去发布第一条拾光吧' }}</p>
+            <p>{{ feed.mode === 'user' ? '该用户还没有发布作品' : feed.mode === 'likes' ? '还没有点赞的作品' : '还没有作品，去发布第一条拾光吧' }}</p>
           </div>
         </div>
       </div>
@@ -106,6 +106,7 @@ import { useFeedStore } from '../stores/feed'
 import { useAuthStore } from '../stores/auth'
 import { followUser, unfollowUser } from '../api/user'
 import { fetchPostDetail } from '../api/posts'
+import { fetchProfile } from '../api/user'
 import FeedItem from '../components/mobile/FeedItem.vue'
 import BottomNav from '../components/mobile/BottomNav.vue'
 import PcFeedCard from '../components/pc/PcFeedCard.vue'
@@ -116,6 +117,7 @@ const router = useRouter()
 const feed = useFeedStore()
 const auth = useAuthStore()
 const commentPost = ref(null)
+const likesOwnerName = ref('')
 
 const scrollEl = ref(null)
 const currentIndex = ref(0)
@@ -125,6 +127,10 @@ const isPc = computed(() => window.innerWidth >= 768)
 const currentPost = computed(() => feed.posts[currentIndex.value] || null)
 
 const scopeLabel = computed(() => {
+  if (feed.mode === 'likes') {
+    const mine = !!auth.userId && feed.scopeUserId === auth.userId
+    return (mine ? '我的' : (likesOwnerName.value ? likesOwnerName.value + ' 的' : 'Ta 的')) + '点赞'
+  }
   if (feed.mode !== 'user') return ''
   const nick = feed.posts[0]?.author?.nickname || ''
   const isMe = !!auth.userId && feed.scopeUserId === auth.userId
@@ -143,8 +149,14 @@ async function locatePost(postId) {
     await scrollToIndex(found)
     return
   }
-  if (feed.mode === 'user' && feed.posts.length) {
-    // 用户模式下未找到（作品可能不在首页），停留在列表第一条
+  if ((feed.mode === 'user' || feed.mode === 'likes') && feed.posts.length) {
+    // 用户/点赞模式下未找到（作品可能不在第一页），先尝试精确加载该作品
+    const detail = await fetchPostDetail(postId).catch(() => null)
+    if (detail) {
+      feed.posts.unshift(detail)
+      currentIndex.value = 0
+      return
+    }
     currentIndex.value = 0
     await scrollToIndex(0)
     return
@@ -173,17 +185,28 @@ function backToProfile() {
   const state = window.history.state
   if (state && state.back) {
     router.back()
-  } else {
-    const uid = feed.scopeUserId
-    router.replace(uid === auth.userId ? '/me' : '/user/' + uid)
+    return
   }
+  const uid = feed.scopeUserId
+  router.replace(uid === auth.userId ? '/me' : '/user/' + uid)
 }
 
 function retryFeed() {
-  if (feed.mode === 'user') {
+  if (feed.mode === 'likes') {
+    feed.loadLikesFirstPage(feed.scopeUserId)
+  } else if (feed.mode === 'user') {
     feed.loadUserFirstPage(feed.scopeUserId)
   } else {
     feed.loadFirstPage()
+  }
+}
+
+async function loadLikesOwnerName(userId) {
+  try {
+    const data = await fetchProfile(userId)
+    likesOwnerName.value = data.nickname || ''
+  } catch (e) {
+    likesOwnerName.value = ''
   }
 }
 
@@ -191,6 +214,19 @@ function retryFeed() {
 async function initFeed() {
   const postId = Number(route.query.postId || '')
   const userId = Number(route.query.userId || '')
+  const likesOf = Number(route.query.likesOf || '')
+
+  // 点赞列表入口：进入该用户的点赞列表流并定位到对应作品
+  if (likesOf) {
+    if (feed.mode !== 'likes' || feed.scopeUserId !== likesOf) {
+      feed.reset()
+      await Promise.all([feed.loadLikesFirstPage(likesOf), loadLikesOwnerName(likesOf)])
+    }
+    if (postId) {
+      await locatePost(postId)
+    }
+    return
+  }
 
   // 来自个人主页：只加载该用户的视频
   if (userId) {

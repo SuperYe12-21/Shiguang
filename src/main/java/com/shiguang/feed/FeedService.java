@@ -16,6 +16,8 @@ import com.shiguang.content.PostVO;
 import com.shiguang.interaction.CommentCreatedEvent;
 import com.shiguang.interaction.CommentDeletedEvent;
 import com.shiguang.interaction.LikeService;
+import com.shiguang.interaction.PostLike;
+import com.shiguang.interaction.PostLikeMapper;
 import com.shiguang.user.FollowService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +49,7 @@ public class FeedService {
     private final PostMapper postMapper;
     private final PostService postService;
     private final LikeService likeService;
+    private final PostLikeMapper postLikeMapper;
     private final FollowService followService;
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
@@ -80,6 +83,49 @@ public class FeedService {
         boolean hasMore = rows.size() > size;
         List<Post> page = hasMore ? rows.subList(0, size) : rows;
         return buildPage(page, hasMore, viewerId);
+    }
+
+    /** 用户点赞过的作品列表（仅已发布），按点赞时间倒序 */
+    public PageVO<PostVO> userLikes(Long userId, Long viewerId, String cursor, int limit) {
+        int size = normalizeLimit(limit);
+        LambdaQueryWrapper<PostLike> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PostLike::getUserId, userId);
+        if (cursor != null && !cursor.isBlank()) {
+            Cursor c = parseCursor(cursor);
+            wrapper.and(w -> w.lt(PostLike::getCreatedAt, c.time())
+                    .or(o -> o.eq(PostLike::getCreatedAt, c.time()).lt(PostLike::getId, c.id())));
+        }
+        wrapper.orderByDesc(PostLike::getCreatedAt)
+                .orderByDesc(PostLike::getId)
+                .last("LIMIT " + (size + 1));
+        List<PostLike> likes = postLikeMapper.selectList(wrapper);
+        boolean hasMore = likes.size() > size;
+        List<PostLike> pageLikes = hasMore ? likes.subList(0, size) : likes;
+        List<Post> posts = new ArrayList<>();
+        for (PostLike like : pageLikes) {
+            Post post = postMapper.selectById(like.getPostId());
+            if (post != null && PostStatus.PUBLISHED.equals(post.getStatus())) {
+                posts.add(post);
+            }
+        }
+        if (posts.isEmpty()) {
+            return PageVO.<PostVO>builder().items(List.of())
+                    .hasMore(hasMore)
+                    .nextCursor(hasMore && !pageLikes.isEmpty()
+                            ? likeCursorOf(pageLikes.get(pageLikes.size() - 1)) : null)
+                    .build();
+        }
+        PageVO<PostVO> result = buildPage(posts, hasMore, viewerId);
+        if (hasMore) {
+            result.setNextCursor(likeCursorOf(pageLikes.get(pageLikes.size() - 1)));
+        }
+        return result;
+    }
+
+    private static String likeCursorOf(PostLike like) {
+        long epoch = like.getCreatedAt() == null ? 0
+                : like.getCreatedAt().atZone(ZoneId.systemDefault()).toEpochSecond();
+        return epoch + "_" + like.getId();
     }
 
     private List<Post> queryPosts(Long userId, String cursorStr, int limit, PostStatus status) {

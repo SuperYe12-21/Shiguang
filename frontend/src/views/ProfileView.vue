@@ -4,20 +4,32 @@
     <header class="pf-top">
       <button class="pf-back" aria-label="返回" @click="goBack">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
-        <span v-if="isPc" class="pf-back-text">返回</span>
+        <span class="pf-back-text">返回</span>
       </button>
-      <span class="pf-top-title">{{ profile.nickname || '个人主页' }}</span>
-      <span class="pf-top-spacer" />
+      <span class="pf-top-title">{{ displayName || '个人主页' }}</span>
+      <button v-if="!isPc" class="pf-more-btn" aria-label="更多" @click="drawerOpen = true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+      </button>
     </header>
+
+    <!-- 移动端横幅 -->
+    <div v-if="!isPc" class="pf-banner"><div class="pf-banner-shine"></div></div>
 
     <!-- 用户信息 -->
     <section class="pf-head">
-      <img class="pf-avatar" :src="profile.avatarUrl || fallbackAvatar" alt="头像" />
-      <h2 class="pf-nickname">{{ profile.nickname || '拾光用户' }}</h2>
+      <div class="pf-head-row">
+        <img class="pf-avatar" :src="profile.avatarUrl || fallbackAvatar" alt="头像" />
+        <div class="pf-head-side">
+          <h2 class="pf-nickname">{{ displayName || '拾光用户' }}<span v-if="remark && !isMe" class="pf-remark-badge">备注</span></h2>
+          <button v-if="isMe" class="pf-follow" @click="openEdit">编辑资料</button>
+          <button v-else class="pf-follow" :class="{ 'pf-follow-on': profile.followedByMe }" @click="toggleFollow">{{ profile.followedByMe ? '已关注' : '+ 关注' }}</button>
+        </div>
+      </div>
       <p v-if="profile.bio" class="pf-bio">{{ profile.bio }}</p>
       <p class="pf-join">加入拾光 · {{ formatDate(profile.createdAt) }}</p>
       <div class="pf-stats">
         <div class="pf-stat"><b>{{ profile.postCount ?? 0 }}</b><span>作品</span></div>
+        <div class="pf-stat"><b>{{ formatCount(profile.likeCount) }}</b><span>获赞</span></div>
         <div class="pf-stat"><b>{{ formatCount(profile.followingCount) }}</b><span>关注</span></div>
         <div class="pf-stat"><b>{{ formatCount(profile.followerCount) }}</b><span>粉丝</span></div>
       </div>
@@ -33,23 +45,57 @@
       </div>
     </section>
 
+    <!-- 移动端 Tab 栏 -->
+    <nav v-if="!isPc" class="pf-tabs">
+      <div class="pf-tab" :class="{ on: activeTab === 'posts' }" @click="switchTab('posts')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h12v2H3v-2z"/></svg>作品<span class="pf-tab-bar" />
+      </div>
+      <div class="pf-tab" :class="{ on: activeTab === 'likes' }" @click="switchTab('likes')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>点赞<span class="pf-tab-bar" />
+      </div>
+      <div class="pf-tab" :class="{ on: activeTab === 'favorites' }" @click="switchTab('favorites')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>收藏<span class="pf-tab-bar" />
+      </div>
+    </nav>
+
     <!-- 作品网格 -->
     <section class="pf-grid">
-      <div v-for="p in posts" :key="p.id" class="pf-cell" @click="openPost(p)">
-        <img :src="coverOf(p)" :alt="p.title || '作品'" loading="lazy" />
-        <span v-if="p.type === 'VIDEO'" class="pf-cell-mark pf-cell-video">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </span>
-        <span v-else-if="(p.images || []).length > 1" class="pf-cell-mark pf-cell-multi">{{ p.images.length }}</span>
-        <span class="pf-cell-like">
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="#ff5c5c"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-          {{ formatCount(p.likeCount) }}
-        </span>
-      </div>
+      <template v-if="activeTab === 'favorites'">
+        <div class="pf-empty-box">
+          <span class="pf-empty-ico"><svg viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg></span>
+          <p>还没有收藏的作品</p>
+        </div>
+      </template>
+      <template v-else-if="activeTab === 'likes' && !likes.length && !likesLoading">
+        <div class="pf-empty-box">
+          <span class="pf-empty-ico"><svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></span>
+          <p>还没有点赞的作品</p>
+        </div>
+      </template>
+      <template v-else>
+        <div v-for="p in gridItems" :key="p.id" class="pf-cell" @click="openGridPost(p)">
+          <img :src="coverOf(p)" :alt="p.title || '作品'" loading="lazy" />
+          <span class="pf-cell-ov"><span class="pf-cell-play"><svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"><path d="M8 5v14l11-7z"/></svg></span></span>
+          <span v-if="p.type === 'VIDEO'" class="pf-cell-mark pf-cell-video">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+          <span v-else-if="(p.images || []).length > 1" class="pf-cell-mark pf-cell-multi">{{ p.images.length }}</span>
+          <span class="pf-cell-like">
+            <svg viewBox="0 0 24 24" width="9" height="9" fill="#ff5c5c"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            {{ formatCount(p.likeCount) }}
+          </span>
+        </div>
+      </template>
     </section>
-    <div v-if="loadingMore" class="pf-more">加载中…</div>
-    <div v-else-if="posts.length && !hasMore" class="pf-more">— 没有更多了 —</div>
-    <div v-if="!posts.length && !loading" class="pf-empty">还没有作品，去发布第一条拾光吧</div>
+    <div v-if="activeTab === 'posts'">
+      <div v-if="loadingMore" class="pf-more">加载中…</div>
+      <div v-else-if="posts.length && !hasMore" class="pf-more">— 没有更多了 —</div>
+      <div v-if="!posts.length && !loading" class="pf-empty">还没有作品，去发布第一条拾光吧</div>
+    </div>
+    <div v-else-if="activeTab === 'likes'">
+      <div v-if="likesLoading" class="pf-more">加载中…</div>
+      <div v-else-if="likes.length && !likesHasMore" class="pf-more">— 没有更多了 —</div>
+    </div>
 
     <!-- 编辑资料弹窗 -->
     <div v-if="editOpen" class="pf-modal" @click.self="editOpen = false">
@@ -69,15 +115,62 @@
       </div>
     </div>
 
+    <!-- 设置备注弹窗 -->
+    <div v-if="remarkOpen" class="pf-modal" @click.self="remarkOpen = false">
+      <div class="pf-modal-panel">
+        <h3 class="pf-modal-title">设置备注</h3>
+        <p class="pf-remark-tip">备注仅保存在本设备，方便你识别这位用户</p>
+        <input v-model="remarkText" class="pf-input" maxlength="30" placeholder="输入备注名" />
+        <div class="pf-modal-actions">
+          <button class="pf-btn pf-btn-ghost" @click="remarkOpen = false">取消</button>
+          <button class="pf-btn pf-btn-primary" @click="saveRemark">{{ remarkText ? '保存' : '清除备注' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 移动端右侧抽屉 -->
+    <template v-if="!isPc">
+      <div class="pf-mask" :class="{ 'pf-mask-show': drawerOpen }" @click="closeDrawer"></div>
+      <aside class="pf-drawer" :class="{ 'pf-drawer-open': drawerOpen }" aria-label="更多菜单">
+        <div class="pf-drawer-head">
+          <span class="pf-drawer-title">更多</span>
+          <button class="pf-drawer-close" aria-label="关闭" @click="closeDrawer">✕</button>
+        </div>
+        <div class="pf-drawer-body">
+          <div v-if="isMe" class="pf-drawer-item" @click="onDrawerEdit">
+            <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></span>
+            <span>编辑资料</span>
+            <span class="pf-drawer-arr"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span>
+          </div>
+          <div v-else class="pf-drawer-item" @click="onDrawerRemark">
+            <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg></span>
+            <span>设置备注</span>
+            <span class="pf-drawer-arr"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span>
+          </div>
+          <div class="pf-drawer-item" @click="shareProfile">
+            <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/></svg></span>
+            <span>分享主页</span>
+            <span class="pf-drawer-arr"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span>
+          </div>
+          <div v-if="isMe" class="pf-drawer-item" @click="onDrawerSettings">
+            <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></span>
+            <span>账号设置</span>
+            <span class="pf-drawer-arr"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span>
+          </div>
+        </div>
+        <div class="pf-drawer-foot">拾光 · v1.0.0</div>
+      </aside>
+    </template>
+
     <BottomNav v-if="!isPc" :active="isMe ? 'me' : ''" />
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { fetchMe, fetchProfile, fetchUserPosts, updateMe, followUser, unfollowUser } from '../api/user'
+import { fetchMe, fetchProfile, fetchUserLikes, fetchUserPosts, updateMe, followUser, unfollowUser } from '../api/user'
 import { presignUpload } from '../api/posts'
 import { useAuthStore } from '../stores/auth'
 import BottomNav from '../components/mobile/BottomNav.vue'
@@ -94,6 +187,15 @@ const loadingMore = ref(false)
 const nextCursor = ref(null)
 const hasMore = ref(true)
 const meId = ref(null)
+const activeTab = ref('posts')
+const likes = ref([])
+const likesLoading = ref(false)
+const likesCursor = ref(null)
+const likesHasMore = ref(true)
+const drawerOpen = ref(false)
+const remarkOpen = ref(false)
+const remarkText = ref('')
+const remark = ref('')
 
 const editOpen = ref(false)
 const saving = ref(false)
@@ -104,6 +206,10 @@ const avatarInput = ref(null)
 let newAvatarObject = ''
 
 const isMe = computed(() => meId.value !== null && meId.value === profile.value.id)
+
+const gridItems = computed(() => (activeTab.value === 'likes' ? likes.value : posts.value))
+
+const displayName = computed(() => remark.value || profile.value.nickname || '')
 
 const fallbackAvatar = computed(() => {
   const name = profile.value.nickname || '拾'
@@ -180,6 +286,35 @@ async function loadPosts() {
   }
 }
 
+function switchTab(tab) {
+  if (activeTab.value === tab) return
+  activeTab.value = tab
+  if (tab === 'likes' && !likes.value.length && !likesLoading.value) loadLikes()
+  if (tab === 'posts' && !posts.value.length && !loading.value && !loadingMore.value) loadPosts()
+}
+
+async function loadLikes() {
+  if (likesLoading.value || !likesHasMore.value) return
+  likesLoading.value = true
+  try {
+    const data = await fetchUserLikes(profile.value.id, likesCursor.value, 12)
+    const items = data.items || []
+    const seen = new Set(likes.value.map((p) => p.id))
+    for (const item of items) {
+      if (!seen.has(item.id)) {
+        likes.value.push(item)
+        seen.add(item.id)
+      }
+    }
+    likesCursor.value = data.nextCursor || null
+    likesHasMore.value = !!data.hasMore
+  } catch (e) {
+    // 静默，滚动可重试
+  } finally {
+    likesLoading.value = false
+  }
+}
+
 async function toggleFollow() {
   if (!auth.isLoggedIn) {
     router.push('/login')
@@ -209,6 +344,15 @@ function goBack() {
 
 function openPost(p) {
   router.push({ path: '/feed', query: { postId: p.id, userId: profile.value.id } })
+}
+
+function openGridPost(p) {
+  if (activeTab.value === 'likes') {
+    // 点赞列表：进入该用户的点赞列表流并定位到这条作品
+    router.push({ path: '/feed', query: { postId: p.id, likesOf: profile.value.id } })
+  } else {
+    openPost(p)
+  }
 }
 
 function openEdit() {
@@ -286,12 +430,79 @@ function logout() {
   router.replace('/login')
 }
 
+function closeDrawer() {
+  drawerOpen.value = false
+}
+
+function onDrawerEdit() {
+  closeDrawer()
+  openEdit()
+}
+
+function onDrawerSettings() {
+  closeDrawer()
+  ElMessage.info('账号设置即将上线')
+}
+
+function loadRemark(userId) {
+  try {
+    remark.value = localStorage.getItem(`sg-remark-${userId}`) || ''
+  } catch (e) {
+    remark.value = ''
+  }
+}
+
+function onDrawerRemark() {
+  closeDrawer()
+  remarkText.value = remark.value || ''
+  remarkOpen.value = true
+}
+
+function saveRemark() {
+  const text = remarkText.value.trim()
+  try {
+    if (text) localStorage.setItem(`sg-remark-${profile.value.id}`, text)
+    else localStorage.removeItem(`sg-remark-${profile.value.id}`)
+  } catch (e) {
+    // 隐私模式等场景忽略
+  }
+  remark.value = text
+  remarkOpen.value = false
+  ElMessage.success(text ? '备注已保存' : '备注已清除')
+}
+
+async function shareProfile() {
+  closeDrawer()
+  const url = `${location.origin}/user/${profile.value.id}`
+  const text = `${profile.value.nickname || '拾光用户'} 的拾光主页`
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: text, text, url })
+      return
+    } catch (e) {
+      if (e && e.name === 'AbortError') return
+      // 降级为复制链接
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url)
+    ElMessage.success('主页链接已复制')
+  } catch (e) {
+    ElMessage.error('分享失败')
+  }
+}
+
+watch(drawerOpen, (open) => {
+  document.body.style.overflow = open ? 'hidden' : ''
+})
+
 let scrollHandler = null
 
 onMounted(async () => {
   const userId = await resolveUserId()
   if (userId == null) return
   profile.value = { id: userId }
+  loadRemark(userId)
   if (auth.isLoggedIn && meId.value === null) {
     try {
       const me = await fetchMe()
@@ -304,7 +515,8 @@ onMounted(async () => {
   await loadPosts()
   scrollHandler = () => {
     if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 400) {
-      loadPosts()
+      if (activeTab.value === 'likes') loadLikes()
+      else loadPosts()
     }
   }
   window.addEventListener('scroll', scrollHandler, { passive: true })
@@ -312,6 +524,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (scrollHandler) window.removeEventListener('scroll', scrollHandler)
+  document.body.style.overflow = ''
 })
 </script>
 
@@ -339,19 +552,27 @@ onBeforeUnmount(() => {
 }
 
 .pf-back {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 5px;
+  height: 36px;
+  padding: 0 14px 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
   color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-  transition: background 0.2s;
+  transition: background 0.2s, border-color 0.2s;
 }
 
 .pf-back:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.pf-back-text {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 /* PC：返回按钮改为胶囊样式，带文字并留出边距，不再孤零零贴在角落 */
@@ -391,12 +612,12 @@ onBeforeUnmount(() => {
     max-width: 40vw;
   }
 
-  .pf-top-spacer {
-    display: none;
-  }
 }
 
 .pf-top-title {
+  flex: 1;
+  text-align: center;
+  margin: 0 4px;
   font-size: 15px;
   font-weight: 600;
   max-width: 60vw;
@@ -405,8 +626,24 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.pf-top-spacer {
-  width: 36px;
+.pf-more-btn {
+  display: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: none;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.pf-more-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .pf-head {
@@ -414,6 +651,24 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   padding: 26px 20px 8px;
+}
+
+.pf-head-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.pf-head-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+.pf-follow {
+  display: none;
 }
 
 .pf-avatar {
@@ -540,12 +795,14 @@ onBeforeUnmount(() => {
 
 .pf-cell-mark {
   position: absolute;
-  right: 6px;
-  bottom: 6px;
+  right: 8px;
+  bottom: 8px;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.55);
-  font-size: 11px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 10px;
   display: flex;
   align-items: center;
   gap: 3px;
@@ -561,19 +818,53 @@ onBeforeUnmount(() => {
 
 .pf-cell-like {
   position: absolute;
-  left: 6px;
-  bottom: 6px;
+  left: 8px;
+  bottom: 8px;
   display: flex;
   align-items: center;
   gap: 3px;
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   pointer-events: none;
+}
+
+.pf-cell-ov {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.pf-cell:hover .pf-cell-ov {
+  opacity: 1;
+}
+
+.pf-cell-play {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.pf-cell-play svg {
+  margin-left: 2px;
 }
 
 .pf-more {
@@ -657,6 +948,25 @@ onBeforeUnmount(() => {
   border-color: var(--sg-primary);
 }
 
+.pf-remark-tip {
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.pf-remark-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 92, 92, 0.16);
+  border: 1px solid rgba(255, 92, 92, 0.35);
+  color: #ff9a9a;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
 .pf-textarea {
   height: auto;
   padding: 10px 14px;
@@ -669,5 +979,362 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 4px;
+}
+
+/* ===== 移动端：方案D 个人主页 ===== */
+@media (max-width: 767px) {
+  .pf-top {
+    padding: 10px 14px;
+  }
+
+  .pf-more-btn {
+    display: flex;
+  }
+
+  .pf-banner {
+    display: block;
+    height: 150px;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(160deg, #3a1c2a 0%, #571f33 46%, #7c2d3e 100%);
+  }
+
+  .pf-banner::before {
+    content: '';
+    position: absolute;
+    width: 340px;
+    height: 340px;
+    left: -110px;
+    top: -160px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 143, 143, 0.32), transparent 65%);
+  }
+
+  .pf-banner::after {
+    content: '';
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    right: -90px;
+    bottom: -180px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 92, 92, 0.4), transparent 65%);
+  }
+
+  .pf-banner-shine {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 55%);
+  }
+
+  .pf-head {
+    position: relative;
+    align-items: stretch;
+    padding: 0 18px;
+  }
+
+  .pf-head-row {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .pf-avatar {
+    width: 88px;
+    height: 88px;
+    margin-top: -44px;
+    border: 4px solid #17161b;
+    flex: none;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+
+  .pf-head-side {
+    align-items: flex-start;
+    flex: 1;
+    padding-left: 16px;
+    margin-top: -20px;
+  }
+
+  .pf-nickname {
+    margin-top: 0;
+    font-size: 19px;
+    text-align: left;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pf-follow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    padding: 0 26px;
+    margin-top: 4px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: #ff5c5c;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+  }
+
+  .pf-follow:active {
+    transform: scale(0.96);
+  }
+
+  .pf-follow-on {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .pf-bio {
+    text-align: left;
+    max-width: 100%;
+  }
+
+  .pf-join {
+    text-align: left;
+  }
+
+  .pf-stats {
+    width: 100%;
+    gap: 0;
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .pf-stat {
+    flex: 1;
+  }
+
+  .pf-stat + .pf-stat {
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .pf-actions {
+    display: none;
+  }
+
+  .pf-tabs {
+    position: sticky;
+    top: 57px;
+    z-index: 20;
+    display: flex;
+    margin-top: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(11, 11, 14, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .pf-tab {
+    position: relative;
+    flex: 1;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: color 0.2s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .pf-tab svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .pf-tab.on {
+    color: #fff;
+  }
+
+  .pf-tab .pf-tab-bar {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: 0;
+    height: 3px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #ff8a5c, #ff5c5c);
+    transition: width 0.25s;
+  }
+
+  .pf-tab.on .pf-tab-bar {
+    width: 28px;
+  }
+
+  .pf-grid {
+    margin-top: 2px;
+  }
+
+  .pf-empty-box {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 70px 20px 90px;
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .pf-empty-ico {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pf-empty-ico svg {
+    width: 28px;
+    height: 28px;
+    fill: rgba(255, 255, 255, 0.3);
+  }
+
+  .pf-empty-box p {
+    font-size: 13px;
+    text-align: center;
+  }
+
+  /* 右侧抽屉 */
+  .pf-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+    z-index: 90;
+  }
+
+  .pf-mask.pf-mask-show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .pf-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100%;
+    width: min(330px, 86%);
+    background: #16151b;
+    z-index: 91;
+    transform: translateX(106%);
+    transition: transform 0.32s cubic-bezier(0.32, 0.72, 0.31, 1);
+    display: flex;
+    flex-direction: column;
+    border-radius: 20px 0 0 20px;
+    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .pf-drawer.pf-drawer-open {
+    transform: translateX(0);
+  }
+
+  .pf-drawer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .pf-drawer-title {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .pf-drawer-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-size: 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  }
+
+  .pf-drawer-close:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .pf-drawer-body {
+    flex: 1;
+    padding: 10px 0;
+    overflow-y: auto;
+  }
+
+  .pf-drawer-item {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 15px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    transition: background 0.15s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .pf-drawer-item:active {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .pf-drawer-ico {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: rgba(255, 92, 92, 0.13);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+  }
+
+  .pf-drawer-ico svg {
+    width: 18px;
+    height: 18px;
+    fill: #ff7a7a;
+  }
+
+  .pf-drawer-arr {
+    margin-left: auto;
+    color: rgba(255, 255, 255, 0.25);
+    display: flex;
+  }
+
+  .pf-drawer-arr svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+  }
+
+  .pf-drawer-foot {
+    padding: 16px 20px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.3);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+  }
 }
 </style>
