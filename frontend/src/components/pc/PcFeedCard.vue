@@ -18,20 +18,27 @@
         <span class="fallback-text">视频暂时无法加载</span>
       </div>
       <template v-else>
-        <img
+        <div
           v-if="!imgFailed && cover"
-          class="image" :class="{ dragging }"
-          :src="postImages[pcImgIndex] || cover"
-          :alt="post.title || '作品'"
-          :style="dragging ? { transform: 'translateX(' + dragOffset + 'px)' } : null"
-          :loading="active ? 'eager' : 'lazy'"
-          draggable="false"
+          class="img-track"
+          :class="{ dragging }"
+          :style="trackStyle"
           @mousedown="onImgDragStart"
           @mousemove="onImgDragMove"
           @mouseup="onImgDragEnd"
           @mouseleave="onImgDragEnd"
-          @error="imgFailed = true"
-        />
+        >
+          <img
+            v-for="(img, i) in postImages"
+            :key="i"
+            class="image"
+            :src="img"
+            :alt="post.title || '作品'"
+            :loading="active ? 'eager' : 'lazy'"
+            draggable="false"
+            @error="imgFailed = true"
+          />
+        </div>
         <div v-else class="image image-fallback">
           <span class="fallback-mark">拾</span>
           <span class="fallback-text">图片暂时无法加载</span>
@@ -133,6 +140,12 @@ const pcImgIndex = ref(0)
 const dragOffset = ref(0)
 const dragging = ref(false)
 let dragStartX = null
+
+const trackStyle = computed(() => {
+  const base = -pcImgIndex.value * 100
+  const offset = dragging.value ? dragOffset.value : 0
+  return { transform: `translateX(calc(${base}% + ${offset}px))` }
+})
 
 function tryPlay(v) {
   v.muted = muted.value
@@ -332,16 +345,24 @@ onBeforeUnmount(() => {
   background: #0b0b0e;
 }
 
-.image {
-  transition: transform 0.25s ease;
+.img-track {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
   cursor: grab;
   user-select: none;
   -webkit-user-drag: none;
 }
 
-.image.dragging {
+.img-track.dragging {
   transition: none;
   cursor: grabbing;
+}
+
+.img-track .image {
+  flex: 0 0 100%;
+  -webkit-user-drag: none;
 }
 
 .image-fallback {
