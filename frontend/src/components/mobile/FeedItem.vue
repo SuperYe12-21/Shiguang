@@ -36,7 +36,6 @@
       <div class="meta-author">
         <img class="avatar" :src="author.avatarUrl || fallbackAvatar" alt="avatar" />
         <span class="nickname">{{ author.nickname || '拾光用户' }}</span>
-        <button v-if="!author.following" class="follow-btn" @click="$emit('follow')">关注</button>
       </div>
       <p class="title">{{ post.title || '分享美好瞬间' }}</p>
       <p v-if="post.description" class="desc">{{ post.description }}</p>
@@ -44,6 +43,10 @@
 
     <!-- 右侧互动栏 -->
     <div class="action-rail">
+      <div class="rail-avatar-wrap">
+        <img class="rail-avatar" :src="author.avatarUrl || fallbackAvatar" alt="avatar" />
+        <span v-if="!author.following" class="rail-follow" title="关注" @click="$emit('follow')">+</span>
+      </div>
       <button class="rail-btn" @click="$emit('like')">
         <span class="rail-icon" :class="{ liked: post.liked }">
           <svg v-if="post.liked" viewBox="0 0 24 24" width="34" height="34" fill="currentColor">
@@ -254,6 +257,18 @@ function formatCount(n) {
   scroll-snap-align: start;
   overflow: hidden;
   background: #141210;
+  transition: height 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* 评论打开时：当前作品压缩到屏幕上方，只保留媒体主体与评论区（抖音式） */
+section.feed-item.item-compact {
+  height: 38vh;
+  height: 38dvh;
+}
+
+section.feed-item.item-compact .feed-meta,
+section.feed-item.item-compact .action-rail {
+  display: none;
 }
 
 .feed-video {
@@ -373,20 +388,6 @@ function formatCount(n) {
   white-space: nowrap;
 }
 
-.follow-btn {
-  margin-left: 2px;
-  padding: 3px 12px;
-  border-radius: var(--sg-radius-full);
-  background: var(--sg-primary);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.follow-btn:active {
-  background: var(--sg-primary-deep);
-}
-
 .title {
   font-size: 15px;
   font-weight: 500;
@@ -415,6 +416,43 @@ function formatCount(n) {
   align-items: center;
   gap: 20px;
   z-index: 2;
+}
+
+.rail-avatar-wrap {
+  position: relative;
+  margin-bottom: 2px;
+}
+
+.rail-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #fff;
+  background: var(--sg-bg-warm);
+}
+
+.rail-follow {
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--sg-primary);
+  border: 2px solid #141210;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.rail-follow:active {
+  transform: translateX(-50%) scale(1.1);
 }
 
 .rail-btn {

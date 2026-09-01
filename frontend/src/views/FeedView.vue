@@ -1,5 +1,5 @@
 <template>
-  <div class="feed-page" :class="{ 'is-pc': isPc }">
+  <div class="feed-page" :class="{ 'is-pc': isPc, 'has-comment': !!commentPost }">
     <!-- 移动端：全屏竖屏流 + 底部导航 -->
     <template v-if="!isPc">
       <main ref="scrollEl" class="m-scroll" @scroll.passive="onScroll">
@@ -13,6 +13,7 @@
             :key="post.id"
             :post="post"
             :active="i === currentIndex"
+            :class="{ 'item-compact': commentPost && i === currentIndex }"
             @like="feed.toggleLike(post)"
             @comment="onComment(post)"
             @share="onShare(post)"
@@ -52,6 +53,7 @@
               :key="post.id"
               :post="post"
               :active="i === currentIndex"
+              :class="{ 'item-compact': !!commentPost }"
               @like="feed.toggleLike(post)"
               @comment="onComment(post)"
               @share="onShare(post)"
@@ -259,6 +261,12 @@ function todo(label) {
   height: 100dvh;
 }
 
+/* 评论打开时：锁定滚动，避免压缩当前卡片时跳动 */
+.has-comment .m-scroll {
+  scroll-snap-type: none;
+  overflow-y: hidden;
+}
+
 .m-skeleton {
   background: linear-gradient(160deg, #efe7de, #e4d8cc);
 }
@@ -297,6 +305,12 @@ function todo(label) {
   height: 100%;
   overflow: hidden;
   background: #0b0b0e;
+}
+
+/* 评论打开时：视频区等比例压缩靠左，评论区占右侧 */
+.has-comment .p-viewport {
+  margin-right: 440px;
+  transition: margin-right 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .p-stack {

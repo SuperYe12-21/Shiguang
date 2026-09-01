@@ -324,6 +324,11 @@ onBeforeUnmount(() => {
   background: #0b0b0e;
 }
 
+/* 评论打开时：隐藏右侧互动栏，只保留媒体与左下文案 */
+.pc-slide.item-compact .rail {
+  display: none;
+}
+
 .media {
   position: absolute;
   inset: 0;

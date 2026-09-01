@@ -239,15 +239,22 @@ function fallbackAvatar(c) {
   position: fixed;
   inset: 0;
   z-index: 2000;
-  background: rgba(0, 0, 0, 0.45);
+  background: transparent;
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  animation: cp-fade 0.25s ease-out;
 }
 
 .cp-mask-pc {
   align-items: stretch;
   justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+@keyframes cp-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .cp-panel {
@@ -258,7 +265,7 @@ function fallbackAvatar(c) {
 
 .cp-panel-mobile {
   width: 100%;
-  height: 76vh;
+  height: 62vh;
   max-height: 640px;
   border-radius: 18px 18px 0 0;
   background: #fff;
@@ -457,7 +464,7 @@ function fallbackAvatar(c) {
   height: 38px;
   padding: 0 20px;
   border-radius: 19px;
-  background: var(--sg-gradient, linear-gradient(135deg, #ff8a5c, #ff5e78));
+  background: var(--sg-primary);
   color: #fff;
   font-size: 14px;
   font-weight: 600;
@@ -471,6 +478,7 @@ function fallbackAvatar(c) {
 }
 
 .cp-send:not(:disabled):hover {
+  background: var(--sg-primary-deep);
   transform: scale(1.03);
 }
 </style>
