@@ -368,8 +368,7 @@ function todo(label) {
   -webkit-overflow-scrolling: touch;
 }
 
-.m-scroll > .feed-item,
-.m-scroll > /* 用户作品流：返回条 */
+/* 用户作品流：返回条 */
 .m-back-bar {
   position: fixed;
   top: 12px;
@@ -405,7 +404,8 @@ function todo(label) {
   white-space: nowrap;
 }
 
-.m-skeleton {
+.m-scroll > .feed-item,
+.m-scroll > .m-skeleton {
   height: 100vh;
   height: 100dvh;
 }
