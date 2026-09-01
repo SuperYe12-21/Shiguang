@@ -40,3 +40,6 @@ build/
 !.devtools/start-all.ps1
 !.devtools/start-dev.ps1
 !.devtools/maven-settings-public.xml
+
+### Redis ###
+*.rdb
