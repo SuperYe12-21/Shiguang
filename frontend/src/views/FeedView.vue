@@ -100,7 +100,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useFeedStore } from '../stores/feed'
 import { useAuthStore } from '../stores/auth'
@@ -125,6 +125,35 @@ const currentIndex = ref(0)
 const isPc = computed(() => window.innerWidth >= 768)
 
 const currentPost = computed(() => feed.posts[currentIndex.value] || null)
+
+// 首页流位置记忆：进入个人主页前记住当前作品，返回首页后恢复（避免总从第一条开始）
+const HOME_RESUME_KEY = 'sg_home_resume'
+
+function saveHomeResume() {
+  const post = currentPost.value
+  if (!post) return
+  try {
+    sessionStorage.setItem(HOME_RESUME_KEY, String(post.id))
+  } catch (e) {
+    // 隐私模式等场景下无法写入，忽略即可
+  }
+}
+
+function takeHomeResume() {
+  try {
+    const v = sessionStorage.getItem(HOME_RESUME_KEY)
+    sessionStorage.removeItem(HOME_RESUME_KEY)
+    return v ? Number(v) : 0
+  } catch (e) {
+    return 0
+  }
+}
+
+onBeforeRouteLeave((to) => {
+  if (feed.mode === 'home' && (to.path === '/me' || to.path.startsWith('/user/'))) {
+    saveHomeResume()
+  }
+})
 
 const scopeLabel = computed(() => {
   if (feed.mode === 'likes') {
@@ -244,8 +273,12 @@ async function initFeed() {
     } else if (!feed.posts.length && !feed.loading) {
       await feed.loadFirstPage()
     }
+    // 无论是否带 postId 都先消费记忆的位置，避免残留
+    const resumeId = takeHomeResume()
     if (postId) {
       await locatePost(postId)
+    } else if (resumeId) {
+      await locatePost(resumeId)
     }
   }
 }
