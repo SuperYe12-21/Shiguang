@@ -101,7 +101,7 @@
       </button>
     </div>
 
-    <div v-if="post.type === 'VIDEO' && !videoFailed && !playing" class="play-mask-m" @click="togglePlay">
+    <div v-if="post.type === 'VIDEO' && !videoFailed && !playing && !barDragging" class="play-mask-m" @click="togglePlay">
       <span class="play-icon-m">▶</span>
     </div>
 
@@ -182,22 +182,22 @@ watch(
 )
 
 function applyResumeSeek(v) {
-  if (!seekPending || !props.active) return
-  if (!v || v.readyState < 1) return
+  if (!seekPending || !props.active || !v) return
   const t = seekPending
-  seekPending = 0
   try {
     const max = v.duration && isFinite(v.duration) ? v.duration - 0.3 : t
     v.currentTime = Math.max(0, Math.min(t, max))
     current.value = v.currentTime || 0
+    if (v.readyState >= 1) seekPending = 0
   } catch (e) {
-    // 个别机型 seek 失败时忽略，继续从头播
+    // 资源未就绪时保留待续播位置，等 metadata/loadeddata 事件再试
   }
 }
 
 function onMeta() {
   const v = videoEl.value
   duration.value = v && isFinite(v.duration) ? v.duration : 0
+  applyResumeSeek(videoEl.value)
 }
 
 function onTime() {
@@ -259,6 +259,7 @@ function onBarUp(e) {
     }
     if (resumeAfterBar) {
       resumeAfterBar = false
+      playing.value = true
       tryPlay(v)
     }
   }

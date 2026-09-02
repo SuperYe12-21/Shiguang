@@ -20,6 +20,7 @@
         @loadeddata="onLoadedData"
         @timeupdate="onTime"
         @pause="onPause"
+        @play="onPlay"
         @error="videoFailed = true"
       />
       <div v-else-if="post.type === 'VIDEO'" class="image image-fallback">
@@ -68,7 +69,7 @@
         <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z" /></svg>
         查看大图
       </div>
-      <div v-if="post.type === 'VIDEO' && !videoFailed && !playing" class="play-mask">
+      <div v-if="post.type === 'VIDEO' && !videoFailed && !playing && !barDragging" class="play-mask">
         <span class="play-icon">▶</span>
       </div>
     </div>
@@ -203,22 +204,26 @@ watch(
 )
 
 function applyResumeSeek(v) {
-  if (!seekPending || !props.active) return
-  if (!v || v.readyState < 1) return
+  if (!seekPending || !props.active || !v) return
   const t = seekPending
-  seekPending = 0
   try {
     const max = v.duration && isFinite(v.duration) ? v.duration - 0.3 : t
     v.currentTime = Math.max(0, Math.min(t, max))
     current.value = v.currentTime || 0
+    if (v.readyState >= 1) seekPending = 0
   } catch (e) {
-    // 个别机型 seek 失败时忽略，继续从头播
+    // 资源未就绪时保留待续播位置，等 metadata/loadeddata 事件再试
   }
 }
 
 function onMeta() {
   const v = videoEl.value
   duration.value = v && isFinite(v.duration) ? v.duration : 0
+  applyResumeSeek(videoEl.value)
+}
+
+function onPlay() {
+  if (props.active) playing.value = true
 }
 
 function onLoadedData() {
@@ -284,6 +289,7 @@ function onBarUp(e) {
     }
     if (resumeAfterBar) {
       resumeAfterBar = false
+      playing.value = true
       tryPlay(v)
     }
   }
