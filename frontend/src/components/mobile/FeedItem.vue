@@ -52,7 +52,7 @@
       <div class="vp-track">
         <div class="vp-fill" :style="{ width: barPct + '%' }"></div>
       </div>
-      <div v-if="barDragging && duration > 0" class="vp-time" :style="{ left: barBubbleLeft }">{{ dragTimeText }}</div>
+      <div v-if="barDragging && duration > 0" class="vp-time">{{ dragTimeText }}</div>
     </div>
 
     <!-- 左下：作者与文案 -->
@@ -174,11 +174,6 @@ const dragTimeText = computed(() => {
   if (!duration.value) return ''
   const cur = Math.min(duration.value, Math.max(0, (dragPct.value / 100) * duration.value))
   return Math.floor(cur) + '/' + Math.floor(duration.value)
-})
-
-const barBubbleLeft = computed(() => {
-  const pct = Math.min(100, Math.max(0, dragPct.value))
-  return 'max(46px, min(' + pct + '%, calc(100% - 46px)))'
 })
 
 // 返回首页后断点续播：initSeek 只在对应作品实例上生效一次
@@ -803,19 +798,20 @@ section.feed-item.item-compact .play-mask-m {
 /* 拖动进度条时的悬浮时间提示 */
 .vp-time {
   position: absolute;
-  bottom: 26px;
+  left: 50%;
+  bottom: 30px;
   transform: translateX(-50%);
   background: rgba(12, 12, 16, 0.82);
   color: #fff;
-  font-size: 12px;
+  font-size: 17px;
   font-weight: 600;
   line-height: 1;
-  padding: 6px 10px;
-  border-radius: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
   pointer-events: none;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.4);
   z-index: 8;
 }
 
