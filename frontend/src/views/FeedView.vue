@@ -445,7 +445,6 @@ function todo(label) {
   height: 100%;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
 }
 
