@@ -267,6 +267,24 @@
 
     <BottomNav v-if="!isPc" :active="isMe ? 'me' : ''" />
 
+    <!-- 分享降级：无法自动复制时弹窗手动复制 -->
+    <div v-if="shareFallbackOpen" class="pf-modal" @click.self="shareFallbackOpen = false">
+      <div class="pf-modal-panel">
+        <h3 class="pf-modal-title">分享主页</h3>
+        <p class="pf-remark-tip">当前浏览器无法自动复制，请长按下方链接手动复制：</p>
+        <input
+          class="pf-input"
+          readonly
+          :value="shareFallbackUrl"
+          @focus="onShareInputFocus"
+        />
+        <div class="pf-modal-actions">
+          <button class="pf-btn pf-btn-ghost" @click="shareFallbackOpen = false">关闭</button>
+          <button class="pf-btn pf-btn-primary" @click="retryShareCopy">复制链接</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 头像大图查看 -->
     <div v-if="avatarViewOpen" class="pf-avatar-view" @click.self="closeAvatarView">
       <img class="pf-avatar-img" :src="profile.avatarUrl" alt="头像大图" />
@@ -318,6 +336,8 @@ const editAvatar = ref('')
 const avatarInput = ref(null)
 let newAvatarObject = ''
 const avatarViewOpen = ref(false)
+const shareFallbackUrl = ref('')
+const shareFallbackOpen = ref(false)
 
 const isMe = computed(() => meId.value !== null && meId.value === profile.value.id)
 
@@ -629,21 +649,76 @@ async function shareProfile() {
   closeDrawer()
   const url = `${location.origin}/user/${profile.value.id}`
   const text = `${profile.value.nickname || '拾光用户'} 的拾光主页`
+  // 优先调起系统分享面板（微信/QQ/系统分享等）
   if (navigator.share) {
     try {
       await navigator.share({ title: text, text, url })
       return
     } catch (e) {
       if (e && e.name === 'AbortError') return
-      // 降级为复制链接
+      // 分享面板异常时继续降级为复制链接
     }
   }
-  try {
-    await navigator.clipboard.writeText(url)
+  if (await copyTextToClipboard(url)) {
     ElMessage.success('主页链接已复制')
-  } catch (e) {
-    ElMessage.error('分享失败')
+    return
   }
+  // 手机通过局域网 IP 访问（非 https）时无系统分享与剪贴板 API，弹窗提供手动复制
+  shareFallbackUrl.value = url
+  shareFallbackOpen.value = true
+}
+
+async function copyTextToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch (e) {
+    // 权限被拒等，继续降级
+  }
+  // 非安全上下文降级：隐藏输入框 + execCommand 复制
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.top = '-1000px'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    ta.setSelectionRange(0, ta.value.length)
+    let ok = false
+    try {
+      ok = document.execCommand('copy')
+    } catch (e) {
+      ok = false
+    }
+    document.body.removeChild(ta)
+    return ok
+  } catch (e) {
+    return false
+  }
+}
+
+function onShareInputFocus(e) {
+  const el = e.target
+  el.select()
+  try {
+    el.setSelectionRange(0, el.value.length)
+  } catch (err) {
+    // 个别浏览器不支持，忽略
+  }
+}
+
+async function retryShareCopy() {
+  if (await copyTextToClipboard(shareFallbackUrl.value)) {
+    shareFallbackOpen.value = false
+    ElMessage.success('主页链接已复制')
+    return
+  }
+  ElMessage.warning('自动复制失败，请长按链接手动复制')
 }
 
 watch(drawerOpen, (open) => {
