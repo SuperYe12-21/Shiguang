@@ -111,7 +111,7 @@
       </button>
     </div>
 
-    <div v-if="post.type === 'VIDEO' && !videoFailed && !playing && !barDragging" class="play-mask-m" @click="togglePlay">
+    <div v-if="post.type === 'VIDEO' && !videoFailed && active && !playing && !barDragging && !resumeActive" class="play-mask-m" @click="togglePlay">
       <span class="play-icon-m">▶</span>
     </div>
 
@@ -166,7 +166,9 @@ let resumeAfterBar = false
 let barPointerId = null
 const posterOff = ref(false)
 const resumeFrameVisible = ref(false)
+const resumeActive = ref(false)
 let resumeHideTimer = null
+let resumeMaskTimer = null
 
 const author = computed(() => props.post.author || {})
 const cover = computed(() => props.post.coverUrl || (props.post.images && props.post.images[0]) || '')
@@ -202,6 +204,11 @@ watch(
     if (v > 0) {
       seekPending = v
       posterOff.value = true
+      resumeActive.value = true
+      if (resumeMaskTimer) clearTimeout(resumeMaskTimer)
+      resumeMaskTimer = setTimeout(() => {
+        resumeActive.value = false
+      }, 2500)
       if (props.resumeFrame) {
         resumeFrameVisible.value = true
         armResumeFrameHide(videoEl.value)
@@ -274,6 +281,11 @@ function onMeta() {
 
 function onPlay() {
   playing.value = true
+  resumeActive.value = false
+  if (resumeMaskTimer) {
+    clearTimeout(resumeMaskTimer)
+    resumeMaskTimer = null
+  }
 }
 
 function onTime() {
