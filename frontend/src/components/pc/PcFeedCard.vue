@@ -1,5 +1,5 @@
 <template>
-  <article class="pc-slide">
+  <article class="pc-slide" :class="{ 'bar-dragging': barDragging }">
     <div class="media" @click="onMediaClick">
       <video
         v-if="post.type === 'VIDEO' && !videoFailed"
@@ -87,6 +87,7 @@
       <div class="vp-track">
         <div class="vp-fill" :style="{ width: barPct + '%' }"></div>
       </div>
+      <div v-if="barDragging && duration > 0" class="vp-time" :style="{ left: barBubbleLeft }">{{ dragTimeText }}</div>
     </div>
 
     <!-- 左下：作者与文案 -->
@@ -189,6 +190,17 @@ const barPct = computed(() => {
   if (barDragging.value) return Math.min(100, Math.max(0, dragPct.value))
   if (!duration.value) return 0
   return Math.min(100, Math.max(0, (current.value / duration.value) * 100))
+})
+
+const dragTimeText = computed(() => {
+  if (!duration.value) return ''
+  const cur = Math.min(duration.value, Math.max(0, (dragPct.value / 100) * duration.value))
+  return Math.floor(cur) + '/' + Math.floor(duration.value)
+})
+
+const barBubbleLeft = computed(() => {
+  const pct = Math.min(100, Math.max(0, dragPct.value))
+  return 'max(46px, min(' + pct + '%, calc(100% - 46px)))'
 })
 
 // 返回首页后断点续播：initSeek 只在对应作品实例上生效一次
@@ -657,6 +669,29 @@ onBeforeUnmount(() => {
   transition: none;
 }
 
+/* 拖动进度条时的悬浮时间提示 */
+.vp-time {
+  position: absolute;
+  bottom: 22px;
+  transform: translateX(-50%);
+  background: rgba(12, 12, 16, 0.82);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  pointer-events: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* 拖动时隐藏左下角文案，聚焦进度提示 */
+.pc-slide.bar-dragging .meta {
+  opacity: 0;
+}
+
 .meta {
   position: absolute;
   left: 0;
@@ -666,6 +701,7 @@ onBeforeUnmount(() => {
   padding: 90px 44px 34px 36px;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.55) 100%);
   pointer-events: none;
+  transition: opacity 0.15s ease;
 }
 
 .meta-author {
