@@ -1,6 +1,6 @@
 <template>
   <nav class="bottom-nav sg-glass">
-    <button class="nav-item" :class="{ active: active === 'home' }" @click="go('/feed')">
+    <button class="nav-item" :class="{ active: active === 'home' }" @click="goHome">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
         <path d="M12 3l10 9h-3v9h-5v-6h-4v6H5v-9H2l10-9z" />
       </svg>
@@ -47,13 +47,22 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
-const emit = defineEmits(['me'])
+const emit = defineEmits(['me', 'home'])
 const props = defineProps({
   active: { type: String, default: 'home' }
 })
 
 function go(path) {
   router.push(path)
+}
+
+// 已在首页（/feed）时点击首页 = 刷新内容，交由页面处理；其他页面则直接跳转
+function goHome() {
+  if (router.currentRoute.value.path === '/feed') {
+    emit('home')
+    return
+  }
+  router.push('/feed')
 }
 
 function todo(label) {

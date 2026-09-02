@@ -45,7 +45,7 @@
           <p>{{ feed.mode === 'user' ? '该用户还没有发布作品' : feed.mode === 'likes' ? '还没有点赞的作品' : '还没有作品，去发布第一条拾光吧' }}</p>
         </div>
       </main>
-      <BottomNav @me="goMe" />
+      <BottomNav @home="goHome" @me="goMe" />
     </template>
 
     <!-- PC：抖音式一屏一卡，滚轮翻页 -->
@@ -95,7 +95,7 @@
       <!-- 顶部迷你导航 -->
       <nav class="p-topbar">
         <span class="p-logo">拾光</span>
-        <button class="p-nav-btn on" @click="router.push('/feed')">首页</button>
+        <button class="p-nav-btn on" @click="goHome">首页</button>
         <button class="p-nav-btn" @click="router.push('/publish')">发布</button>
         <button class="p-nav-btn" @click="todo('消息')">消息</button>
         <button class="p-nav-btn" @click="goMe">我的</button>
@@ -448,6 +448,45 @@ function goMe() {
     return
   }
   router.push('/me')
+}
+
+// 首页按钮：已在首页流时点击 = 刷新回第一屏；在他人作品流/点赞流时先回到首页
+function goHome() {
+  commentPost.value = null
+  const scoped = feed.mode === 'user' || feed.mode === 'likes'
+  const deepLinked = !!route.query.postId
+  if (feed.mode === 'home' && !scoped && !deepLinked) {
+    if (!feed.loading) refreshHomeFeed()
+    return
+  }
+  if (scoped) {
+    currentIndex.value = 0
+    const el = scrollEl.value
+    if (el && !isPc.value) el.scrollTo({ top: 0 })
+  }
+  router.push('/feed')
+}
+
+async function refreshHomeFeed() {
+  feedReady.value = false
+  resumeSeek.value = null
+  currentIndex.value = 0
+  const el = scrollEl.value
+  if (el && !isPc.value) el.scrollTo({ top: 0 })
+  try {
+    sessionStorage.removeItem(HOME_RESUME_KEY)
+  } catch (e) {
+    // 隐私模式等场景下无法写入，忽略即可
+  }
+  feed.reset()
+  try {
+    await feed.loadFirstPage()
+  } finally {
+    feedReady.value = true
+  }
+  if (!feed.error) {
+    ElMessage.success('首页已刷新')
+  }
 }
 
 function goAuthor(post) {
