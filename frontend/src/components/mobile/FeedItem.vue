@@ -16,8 +16,11 @@
       :preload="active ? 'auto' : 'metadata'"
       @click="togglePlay"
       @play="playing = true"
-      @pause="playing = false"
+      @pause="onPause"
       @loadeddata="onLoadedData"
+      @loadedmetadata="onMeta"
+      @durationchange="onMeta"
+      @timeupdate="onTime"
       @error="videoFailed = true"
     />
     <div v-else class="feed-image">
@@ -33,6 +36,21 @@
       <div v-else class="img-fallback">
         <span class="img-fallback-mark">拾</span>
         <span class="img-fallback-text">图片暂时无法加载</span>
+      </div>
+    </div>
+
+    <!-- 视频进度条 -->
+    <div
+      v-if="post.type === 'VIDEO' && !videoFailed && duration > 0"
+      class="video-progress"
+      :class="{ dragging: barDragging }"
+      @pointerdown="onBarDown"
+      @pointermove="onBarMove"
+      @pointerup="onBarUp"
+      @pointercancel="onBarUp"
+    >
+      <div class="vp-track">
+        <div class="vp-fill" :style="{ width: barPct + '%' }"></div>
       </div>
     </div>
 
@@ -103,10 +121,11 @@ import { useAuthStore } from '../../stores/auth'
 
 const props = defineProps({
   post: { type: Object, required: true },
-  active: { type: Boolean, default: false }
+  active: { type: Boolean, default: false },
+  initSeek: { type: Number, default: 0 }
 })
 
-const emit = defineEmits(['like', 'comment', 'share', 'follow', 'author'])
+const emit = defineEmits(['like', 'comment', 'share', 'follow', 'author', 'progress'])
 
 const auth = useAuthStore()
 const isMine = ref(false)
@@ -127,6 +146,13 @@ let soundTipTimer = null
 let retryTimer = null
 const imgFailed = ref(false)
 const videoFailed = ref(false)
+const duration = ref(0)
+const current = ref(0)
+const barDragging = ref(false)
+const dragPct = ref(0)
+let seekPending = 0
+let resumeAfterBar = false
+let barPointerId = null
 
 const author = computed(() => props.post.author || {})
 const cover = computed(() => props.post.coverUrl || (props.post.images && props.post.images[0]) || '')
@@ -136,6 +162,108 @@ const postImages = computed(() => {
   return props.post.coverUrl ? [props.post.coverUrl] : []
 })
 const imgIndex = ref(0)
+
+const barPct = computed(() => {
+  if (barDragging.value) return Math.min(100, Math.max(0, dragPct.value))
+  if (!duration.value) return 0
+  return Math.min(100, Math.max(0, (current.value / duration.value) * 100))
+})
+
+// 返回首页后断点续播：initSeek 只在对应作品实例上生效一次
+watch(
+  () => props.initSeek,
+  (v) => {
+    if (v > 0) {
+      seekPending = v
+      applyResumeSeek(videoEl.value)
+    }
+  },
+  { immediate: true }
+)
+
+function applyResumeSeek(v) {
+  if (!seekPending || !props.active) return
+  if (!v || v.readyState < 1) return
+  const t = seekPending
+  seekPending = 0
+  try {
+    const max = v.duration && isFinite(v.duration) ? v.duration - 0.3 : t
+    v.currentTime = Math.max(0, Math.min(t, max))
+    current.value = v.currentTime || 0
+  } catch (e) {
+    // 个别机型 seek 失败时忽略，继续从头播
+  }
+}
+
+function onMeta() {
+  const v = videoEl.value
+  duration.value = v && isFinite(v.duration) ? v.duration : 0
+}
+
+function onTime() {
+  const v = videoEl.value
+  if (!v) return
+  current.value = v.currentTime
+  if (props.active && typeof v.currentTime === 'number') {
+    emit('progress', v.currentTime)
+  }
+}
+
+function onPause() {
+  playing.value = false
+  const v = videoEl.value
+  if (v && props.active && typeof v.currentTime === 'number') {
+    emit('progress', v.currentTime)
+  }
+}
+
+function barRatioFromEvent(e) {
+  const el = e.currentTarget
+  const rect = el.getBoundingClientRect()
+  if (!rect.width) return 0
+  return Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+}
+
+function onBarDown(e) {
+  const v = videoEl.value
+  if (!v || !duration.value) return
+  barPointerId = e.pointerId
+  barDragging.value = true
+  resumeAfterBar = !v.paused
+  try {
+    v.pause()
+  } catch (err) {
+    // 忽略
+  }
+  dragPct.value = barRatioFromEvent(e) * 100
+  if (e.cancelable) e.preventDefault()
+}
+
+function onBarMove(e) {
+  if (!barDragging.value || e.pointerId !== barPointerId) return
+  dragPct.value = barRatioFromEvent(e) * 100
+}
+
+function onBarUp(e) {
+  if (!barDragging.value || e.pointerId !== barPointerId) return
+  barDragging.value = false
+  barPointerId = null
+  const v = videoEl.value
+  if (v && duration.value) {
+    const t = barRatioFromEvent(e) * duration.value
+    try {
+      v.currentTime = Math.max(0, Math.min(t, duration.value - 0.1))
+      current.value = v.currentTime || 0
+    } catch (err) {
+      // 忽略
+    }
+    if (resumeAfterBar) {
+      resumeAfterBar = false
+      tryPlay(v)
+    }
+  }
+  resumeAfterBar = false
+}
 let touchStartX = null
 let touchStartY = null
 let touchMoved = false
@@ -216,6 +344,7 @@ onBeforeUnmount(() => {
 
 function tryPlay(v) {
   if (!v || v.readyState === 0) return
+  applyResumeSeek(v)
   v.muted = muted.value
   const p = v.play()
   if (p && p.catch) {
@@ -249,6 +378,7 @@ function scheduleRetry(v) {
 
 function onLoadedData() {
   const v = videoEl.value
+  applyResumeSeek(v)
   if (v && props.active && v.paused) {
     tryPlay(v)
   }
@@ -619,6 +749,46 @@ section.feed-item.item-compact .play-mask-m {
   color: rgba(255, 255, 255, 0.85);
   font-size: 14px;
   z-index: 3;
+}
+
+/* 视频进度条 */
+.video-progress {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: calc(var(--sg-nav-h) + env(safe-area-inset-bottom));
+  height: 22px;
+  z-index: 7;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.vp-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.32);
+  overflow: hidden;
+}
+
+.vp-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--sg-primary);
+  box-shadow: 0 0 8px rgba(255, 92, 92, 0.6);
+  transition: width 0.1s linear;
+}
+
+.video-progress.dragging .vp-fill {
+  transition: none;
+}
+
+/* 评论打开时视频压缩为顶部小窗，进度条一并隐藏 */
+section.feed-item.item-compact .video-progress {
+  display: none;
 }
 
 

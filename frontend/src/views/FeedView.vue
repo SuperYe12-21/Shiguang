@@ -20,12 +20,14 @@
             :key="post.id"
             :post="post"
             :active="i === currentIndex"
+            :init-seek="seekInitFor(post)"
             :class="{ 'item-compact': commentPost && i === currentIndex }"
             @like="feed.toggleLike(post)"
             @comment="onComment(post)"
             @share="onShare(post)"
             @follow="onFollow(post)"
             @author="goAuthor(post)"
+            @progress="onVideoProgress"
           />
           <div class="m-end">
             <span v-if="feed.loadingMore">加载中…</span>
@@ -61,12 +63,14 @@
               :key="post.id"
               :post="post"
               :active="i === currentIndex"
+              :init-seek="seekInitFor(post)"
               :class="{ 'item-compact': !!commentPost }"
               @like="feed.toggleLike(post)"
               @comment="onComment(post)"
               @share="onShare(post)"
               @follow="onFollow(post)"
               @author="goAuthor(post)"
+              @progress="onVideoProgress"
             />
             <div class="p-end">
               <span v-if="feed.loadingMore">加载中…</span>
@@ -125,15 +129,29 @@ const currentIndex = ref(0)
 const isPc = computed(() => window.innerWidth >= 768)
 
 const currentPost = computed(() => feed.posts[currentIndex.value] || null)
+const activeVideoTime = ref(0)
+const resumeSeek = ref(null)
+
+function onVideoProgress(t) {
+  if (typeof t === 'number' && isFinite(t) && t > 0) {
+    activeVideoTime.value = t
+  }
+}
+
+function seekInitFor(post) {
+  const r = resumeSeek.value
+  return r && r.postId === post.id ? r.time : 0
+}
 
 // 首页流位置记忆：进入个人主页前记住当前作品，返回首页后恢复（避免总从第一条开始）
 const HOME_RESUME_KEY = 'sg_home_resume'
 
-function saveHomeResume() {
-  const post = currentPost.value
-  if (!post) return
+function saveHomeResume(postId, time) {
   try {
-    sessionStorage.setItem(HOME_RESUME_KEY, String(post.id))
+    sessionStorage.setItem(
+      HOME_RESUME_KEY,
+      JSON.stringify({ postId, time: Math.max(0, Math.round((time || 0) * 10) / 10) })
+    )
   } catch (e) {
     // 隐私模式等场景下无法写入，忽略即可
   }
@@ -141,18 +159,32 @@ function saveHomeResume() {
 
 function takeHomeResume() {
   try {
-    const v = sessionStorage.getItem(HOME_RESUME_KEY)
+    const raw = sessionStorage.getItem(HOME_RESUME_KEY)
     sessionStorage.removeItem(HOME_RESUME_KEY)
-    return v ? Number(v) : 0
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed.postId === 'number') {
+        return { postId: parsed.postId, time: Number(parsed.time) || 0 }
+      }
+      return null
+    } catch (e) {
+      const legacy = Number(raw)
+      return legacy ? { postId: legacy, time: 0 } : null
+    }
   } catch (e) {
-    return 0
+    return null
   }
 }
 
 onBeforeRouteLeave((to) => {
   if (feed.mode === 'home' && (to.path === '/me' || to.path.startsWith('/user/'))) {
-    saveHomeResume()
+    const post = currentPost.value
+    if (post) {
+      saveHomeResume(post.id, post.type === 'VIDEO' ? activeVideoTime.value : 0)
+    }
   }
+  resumeSeek.value = null
 })
 
 const scopeLabel = computed(() => {
@@ -274,11 +306,14 @@ async function initFeed() {
       await feed.loadFirstPage()
     }
     // 无论是否带 postId 都先消费记忆的位置，避免残留
-    const resumeId = takeHomeResume()
+    const resume = takeHomeResume()
     if (postId) {
       await locatePost(postId)
-    } else if (resumeId) {
-      await locatePost(resumeId)
+    } else if (resume && resume.postId) {
+      if (resume.time > 0) {
+        resumeSeek.value = { postId: resume.postId, time: resume.time }
+      }
+      await locatePost(resume.postId)
     }
   }
 }
