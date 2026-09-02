@@ -30,7 +30,7 @@
           </button>
           <div class="pc-banner"></div>
           <header class="pc-head">
-            <img class="pc-avatar" :src="profile.avatarUrl || fallbackAvatar" alt="头像" />
+            <img class="pc-avatar" :src="profile.avatarUrl || fallbackAvatar" alt="头像" title="查看头像大图" @click="openAvatarView" />
             <div class="pc-head-info">
               <div class="pc-hrow">
                 <h1 class="pc-nick">{{ displayName || '拾光用户' }}</h1>
@@ -120,7 +120,7 @@
     <!-- 用户信息 -->
     <section class="pf-head">
       <div class="pf-head-row">
-        <img class="pf-avatar" :src="profile.avatarUrl || fallbackAvatar" alt="头像" />
+        <img class="pf-avatar" :src="profile.avatarUrl || fallbackAvatar" alt="头像" @click="openAvatarView" />
         <div class="pf-head-side">
           <h2 class="pf-nickname">{{ displayName || '拾光用户' }}<span v-if="remark && !isMe" class="pf-remark-badge">备注</span></h2>
           <button v-if="isMe" class="pf-follow" @click="openEdit">编辑资料</button>
@@ -266,6 +266,12 @@
     </template>
 
     <BottomNav v-if="!isPc" :active="isMe ? 'me' : ''" />
+
+    <!-- 头像大图查看 -->
+    <div v-if="avatarViewOpen" class="pf-avatar-view" @click.self="closeAvatarView">
+      <img class="pf-avatar-img" :src="profile.avatarUrl" alt="头像大图" />
+      <button class="pf-avatar-close" aria-label="关闭" @click="closeAvatarView">×</button>
+    </div>
   </div>
 </template>
 
@@ -311,6 +317,7 @@ const editBio = ref('')
 const editAvatar = ref('')
 const avatarInput = ref(null)
 let newAvatarObject = ''
+const avatarViewOpen = ref(false)
 
 const isMe = computed(() => meId.value !== null && meId.value === profile.value.id)
 
@@ -495,6 +502,21 @@ function openEdit() {
   editOpen.value = true
 }
 
+function openAvatarView() {
+  if (!profile.value.avatarUrl) return
+  avatarViewOpen.value = true
+  document.body.style.overflow = 'hidden'
+}
+
+function closeAvatarView() {
+  avatarViewOpen.value = false
+  document.body.style.overflow = ''
+}
+
+function avatarViewKeydown(e) {
+  if (e.key === 'Escape' && avatarViewOpen.value) closeAvatarView()
+}
+
 function pickAvatar() {
   avatarInput.value && avatarInput.value.click()
 }
@@ -653,11 +675,13 @@ onMounted(async () => {
   }
   window.addEventListener('scroll', scrollHandler, { passive: true })
   window.addEventListener('resize', syncIsPc)
+  window.addEventListener('keydown', avatarViewKeydown)
 })
 
 onBeforeUnmount(() => {
   if (scrollHandler) window.removeEventListener('scroll', scrollHandler)
   window.removeEventListener('resize', syncIsPc)
+  window.removeEventListener('keydown', avatarViewKeydown)
   document.body.style.overflow = ''
 })
 </script>
@@ -1945,5 +1969,68 @@ onBeforeUnmount(() => {
   text-align: center;
   color: #b8b2ab;
   font-size: 13px;
+}
+
+.pc-avatar,
+.pf-avatar {
+  cursor: zoom-in;
+}
+
+.pc-avatar:hover {
+  transform: scale(1.02);
+  transition: transform 0.2s;
+}
+
+.pf-avatar-view {
+  position: fixed;
+  inset: 0;
+  z-index: 3100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 8, 10, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: sg-fade-in 0.18s ease-out;
+}
+
+.pf-avatar-img {
+  max-width: min(88vw, 640px);
+  max-height: 82vh;
+  border-radius: 20px;
+  object-fit: contain;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  animation: sg-pop-in 0.2s ease-out;
+}
+
+.pf-avatar-close {
+  position: fixed;
+  top: calc(16px + env(safe-area-inset-top));
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.pf-avatar-close:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+@keyframes sg-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sg-pop-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
 }
 </style>
