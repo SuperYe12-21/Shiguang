@@ -173,8 +173,14 @@ const barPct = computed(() => {
 const dragTimeText = computed(() => {
   if (!duration.value) return ''
   const cur = Math.min(duration.value, Math.max(0, (dragPct.value / 100) * duration.value))
-  return Math.floor(cur) + '/' + Math.floor(duration.value)
+  return fmtClock(cur) + ' / ' + fmtClock(duration.value)
 })
+
+function fmtClock(t) {
+  const s = Math.max(0, Math.floor(t))
+  const m = Math.floor(s / 60)
+  return m + ':' + String(s % 60).padStart(2, '0')
+}
 
 // 返回首页后断点续播：initSeek 只在对应作品实例上生效一次
 watch(
@@ -799,14 +805,14 @@ section.feed-item.item-compact .play-mask-m {
 .vp-time {
   position: absolute;
   left: 50%;
-  bottom: 30px;
+  bottom: 42px;
   transform: translateX(-50%);
   background: rgba(12, 12, 16, 0.82);
   color: #fff;
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 600;
   line-height: 1;
-  padding: 8px 16px;
+  padding: 10px 18px;
   border-radius: 10px;
   pointer-events: none;
   white-space: nowrap;
