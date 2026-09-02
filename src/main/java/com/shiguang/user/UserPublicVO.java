@@ -7,14 +7,6 @@ public record UserPublicVO(
         String nickname,
         String avatarUrl,
         String bio,
-        LocalDateTime createdAt) {
-
-    public static UserPublicVO from(User user) {
-        return new UserPublicVO(
-                user.getId(),
-                user.getNickname(),
-                user.getAvatarUrl(),
-                user.getBio(),
-                user.getCreatedAt());
-    }
+        LocalDateTime createdAt,
+        Boolean followedByMe) {
 }

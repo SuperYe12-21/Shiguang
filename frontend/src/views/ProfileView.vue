@@ -1,5 +1,107 @@
 <template>
-  <div class="profile-page">
+  <div class="profile-page" :class="{ 'pc-mode': isPc }">
+    <!-- PC：方案 A 经典分栏 -->
+    <template v-if="isPc">
+      <div class="pc-shell">
+        <aside class="pc-side">
+          <div class="pc-logo" @click="router.push('/feed')">拾</div>
+          <button class="pc-side-btn" @click="router.push('/feed')">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+            <span>首页</span>
+          </button>
+          <button class="pc-side-btn" @click="router.push('/publish')">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            <span>发布</span>
+          </button>
+          <button class="pc-side-btn" @click="msgTodo">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            <span>消息</span>
+          </button>
+          <div class="pc-side-grow"></div>
+          <button class="pc-side-btn" :class="{ on: isMe }" @click="goMe">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            <span>我</span>
+          </button>
+        </aside>
+        <div class="pc-main">
+          <button class="pc-back" aria-label="返回" @click="goBack">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+            返回
+          </button>
+          <div class="pc-banner"></div>
+          <header class="pc-head">
+            <img class="pc-avatar" :src="profile.avatarUrl || fallbackAvatar" alt="头像" />
+            <div class="pc-head-info">
+              <div class="pc-hrow">
+                <h1 class="pc-nick">{{ displayName || '拾光用户' }}</h1>
+                <span v-if="remark && !isMe" class="pc-remark">备注</span>
+                <span class="pc-uid">拾光号 {{ profile.id }}</span>
+                <div class="pc-actions">
+                  <template v-if="isMe">
+                    <button class="pc-btn pc-btn-ghost" @click="shareProfile">分享主页</button>
+                    <button class="pc-btn pc-btn-primary" @click="openEdit">编辑资料</button>
+                  </template>
+                  <template v-else>
+                    <button class="pc-btn pc-btn-ghost" @click="openRemark">设置备注</button>
+                    <button class="pc-btn pc-btn-ghost" @click="shareProfile">分享主页</button>
+                    <button class="pc-btn pc-btn-primary" :class="{ 'pc-btn-on': profile.followedByMe }" @click="toggleFollow">{{ profile.followedByMe ? '已关注' : '+ 关注' }}</button>
+                  </template>
+                </div>
+              </div>
+              <p v-if="profile.bio" class="pc-bio">{{ profile.bio }}</p>
+              <p class="pc-join">加入拾光 · {{ formatDate(profile.createdAt) }}</p>
+              <div class="pc-stats">
+                <div class="pc-stat"><b>{{ profile.postCount ?? 0 }}</b><span>作品</span></div>
+                <div class="pc-stat"><b>{{ formatCount(profile.likeCount) }}</b><span>获赞</span></div>
+                <div class="pc-stat pc-stat-link" @click="goFollowing"><b>{{ formatCount(profile.followingCount) }}</b><span>关注</span></div>
+                <div class="pc-stat pc-stat-link" @click="goFollowers"><b>{{ formatCount(profile.followerCount) }}</b><span>粉丝</span></div>
+              </div>
+            </div>
+          </header>
+          <nav class="pc-tabs">
+            <div class="pc-tab" :class="{ on: activeTab === 'posts' }" @click="switchTab('posts')">作品</div>
+            <div class="pc-tab" :class="{ on: activeTab === 'likes' }" @click="switchTab('likes')">点赞</div>
+            <div class="pc-tab" :class="{ on: activeTab === 'favorites' }" @click="switchTab('favorites')">收藏</div>
+          </nav>
+          <section class="pc-grid-wrap">
+            <div v-if="activeTab === 'favorites'" class="pc-empty">
+              <span class="pc-empty-ico"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg></span>
+              <p>还没有收藏的作品</p>
+            </div>
+            <template v-else-if="activeTab === 'likes' && !likes.length && !likesLoading">
+              <div class="pc-empty">
+                <span class="pc-empty-ico"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></span>
+                <p>还没有点赞的作品</p>
+              </div>
+            </template>
+            <div v-else-if="!gridItems.length && activeTab === 'posts'" class="pc-empty">
+              <span class="pc-empty-ico"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></span>
+              <p>还没有作品，去发布第一条拾光吧</p>
+            </div>
+            <div v-else class="pc-grid">
+              <div v-for="p in gridItems" :key="p.id" class="pc-cell" @click="openGridPost(p)">
+                <img :src="coverOf(p)" :alt="p.title || '作品'" loading="lazy" />
+                <span class="pc-cell-ov">
+                  <span v-if="p.type === 'VIDEO'" class="pc-ov-tag pc-ov-play"><svg viewBox="0 0 24 24" width="11" height="11" fill="#fff"><path d="M8 5v14l11-7z"/></svg></span>
+                  <span v-if="p.type === 'IMAGE' && (p.images || []).length > 1" class="pc-ov-tag pc-ov-multi">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="#fff"><path d="M4 5h16v2H4V5zm0 6h16v2H4v-2zm0 6h10v2H4v-2z"/></svg>
+                  </span>
+                  <span class="pc-ov-tag pc-ov-like"><svg viewBox="0 0 24 24" width="10" height="10" fill="#fff"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>{{ formatCount(p.likeCount) }}</span>
+                </span>
+              </div>
+            </div>
+            <div class="pc-more">
+              <span v-if="loadingMore || likesLoading">加载中…</span>
+              <span v-else-if="activeTab === 'posts' && posts.length && !hasMore">— 没有更多了 —</span>
+              <span v-else-if="activeTab === 'likes' && likes.length && !likesHasMore">— 没有更多了 —</span>
+            </div>
+          </section>
+        </div>
+      </div>
+    </template>
+
+    <!-- 移动端 -->
+    <template v-else>
     <!-- 顶栏 -->
     <header class="pf-top">
       <button class="pf-back" aria-label="返回" @click="goBack">
@@ -30,8 +132,8 @@
       <div class="pf-stats">
         <div class="pf-stat"><b>{{ profile.postCount ?? 0 }}</b><span>作品</span></div>
         <div class="pf-stat"><b>{{ formatCount(profile.likeCount) }}</b><span>获赞</span></div>
-        <div class="pf-stat"><b>{{ formatCount(profile.followingCount) }}</b><span>关注</span></div>
-        <div class="pf-stat"><b>{{ formatCount(profile.followerCount) }}</b><span>粉丝</span></div>
+        <div class="pf-stat pf-stat-link" @click="goFollowing"><b>{{ formatCount(profile.followingCount) }}</b><span>关注</span></div>
+        <div class="pf-stat pf-stat-link" @click="goFollowers"><b>{{ formatCount(profile.followerCount) }}</b><span>粉丝</span></div>
       </div>
       <div class="pf-actions">
         <template v-if="isMe">
@@ -96,6 +198,7 @@
       <div v-if="likesLoading" class="pf-more">加载中…</div>
       <div v-else-if="likes.length && !likesHasMore" class="pf-more">— 没有更多了 —</div>
     </div>
+    </template>
 
     <!-- 编辑资料弹窗 -->
     <div v-if="editOpen" class="pf-modal" @click.self="editOpen = false">
@@ -179,7 +282,11 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-const isPc = computed(() => window.innerWidth >= 768)
+const isPc = ref(typeof window !== 'undefined' ? window.innerWidth >= 768 : false)
+function syncIsPc() {
+  isPc.value = window.innerWidth >= 768
+  if (!isPc.value) closeDrawer()
+}
 const profile = ref({})
 const posts = ref([])
 const loading = ref(false)
@@ -340,6 +447,31 @@ function goBack() {
   } else {
     router.back()
   }
+}
+
+function goMe() {
+  if (!auth.isLoggedIn) {
+    router.push('/login')
+    return
+  }
+  router.push('/me')
+}
+
+function goFollowers() {
+  router.push(`/user/${profile.value.id}/followers`)
+}
+
+function goFollowing() {
+  router.push(`/user/${profile.value.id}/following`)
+}
+
+function msgTodo() {
+  ElMessage.info('消息功能开发中，敬请期待')
+}
+
+function openRemark() {
+  remarkText.value = remark.value || ''
+  remarkOpen.value = true
 }
 
 function openPost(p) {
@@ -520,10 +652,12 @@ onMounted(async () => {
     }
   }
   window.addEventListener('scroll', scrollHandler, { passive: true })
+  window.addEventListener('resize', syncIsPc)
 })
 
 onBeforeUnmount(() => {
   if (scrollHandler) window.removeEventListener('scroll', scrollHandler)
+  window.removeEventListener('resize', syncIsPc)
   document.body.style.overflow = ''
 })
 </script>
@@ -1336,5 +1470,480 @@ onBeforeUnmount(() => {
     color: rgba(255, 255, 255, 0.3);
     border-top: 1px solid rgba(255, 255, 255, 0.05);
   }
+}
+</style>
+
+<!-- PC 端（方案 A）样式 -->
+<style scoped>
+.profile-page.pc-mode {
+  background: #f7f7f5;
+  color: #26221f;
+  padding-bottom: 0;
+  min-height: 100vh;
+}
+
+.pc-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* 左侧图标导航 */
+.pc-side {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 76px;
+  background: #fff;
+  border-right: 1px solid rgba(38, 34, 31, 0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 0;
+  gap: 8px;
+  z-index: 40;
+}
+
+.pc-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ff8a6b, #ff5c5c);
+  color: #fff;
+  font-size: 19px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  box-shadow: 0 6px 18px rgba(255, 92, 92, 0.35);
+  cursor: pointer;
+}
+
+.pc-side-btn {
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  color: #8a837d;
+  font-size: 11px;
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.pc-side-btn svg {
+  width: 21px;
+  height: 21px;
+}
+
+.pc-side-btn:hover {
+  background: #ffe9e6;
+  color: #ff5c5c;
+}
+
+.pc-side-btn.on {
+  background: #ffe9e6;
+  color: #ff5c5c;
+  font-weight: 600;
+}
+
+.pc-side-grow {
+  flex: 1;
+}
+
+/* 主内容 */
+.pc-main {
+  margin-left: 76px;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.pc-back {
+  position: absolute;
+  top: 18px;
+  left: 24px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 18px 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(38, 34, 31, 0.08);
+  color: #26221f;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(38, 34, 31, 0.1);
+  transition: all 0.2s;
+}
+
+.pc-back:hover {
+  background: #fff;
+  color: #ff5c5c;
+  border-color: rgba(255, 92, 92, 0.35);
+}
+
+.pc-banner {
+  height: 220px;
+  background: linear-gradient(135deg, #fde8d8 0%, #f8cfc3 52%, #f3b7b6 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.pc-banner::before {
+  content: '';
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  left: -120px;
+  top: -190px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.55), transparent 62%);
+}
+
+.pc-banner::after {
+  content: '';
+  position: absolute;
+  width: 360px;
+  height: 360px;
+  right: -100px;
+  bottom: -200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 92, 92, 0.22), transparent 60%);
+}
+
+.pc-head {
+  max-width: 1180px;
+  margin: -34px auto 0;
+  padding: 0 32px;
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+  position: relative;
+}
+
+.pc-avatar {
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 6px solid #f7f7f5;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(38, 34, 31, 0.18);
+  flex: none;
+}
+
+.pc-head-info {
+  flex: 1;
+  padding-bottom: 18px;
+  min-width: 0;
+}
+
+.pc-hrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pc-nick {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #26221f;
+}
+
+.pc-remark {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #ffe9e6;
+  color: #e84b4b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pc-uid {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 92, 92, 0.1);
+  color: #e84b4b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pc-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.pc-btn {
+  height: 42px;
+  padding: 0 26px;
+  border-radius: 14px;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: inherit;
+}
+
+.pc-btn-primary {
+  background: #ff5c5c;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(255, 92, 92, 0.32);
+}
+
+.pc-btn-primary:hover {
+  background: #e84b4b;
+  transform: translateY(-1px);
+}
+
+.pc-btn-on {
+  background: #fff;
+  color: #26221f;
+  border: 1px solid rgba(38, 34, 31, 0.14);
+}
+
+.pc-btn-on:hover {
+  border-color: #ff5c5c;
+  color: #ff5c5c;
+}
+
+.pc-btn-ghost {
+  background: #fff;
+  color: #26221f;
+  border: 1px solid rgba(38, 34, 31, 0.14);
+}
+
+.pc-btn-ghost:hover {
+  border-color: #ff5c5c;
+  color: #ff5c5c;
+}
+
+.pc-bio {
+  margin-top: 10px;
+  font-size: 15px;
+  color: #5d5751;
+  line-height: 1.6;
+}
+
+.pc-join {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #b8b2ab;
+}
+
+.pc-stats {
+  display: flex;
+  gap: 36px;
+  margin-top: 16px;
+}
+
+.pc-stat b {
+  font-size: 21px;
+  font-weight: 800;
+  display: block;
+  color: #26221f;
+  transition: color 0.2s;
+}
+
+.pc-stat span {
+  font-size: 12px;
+  color: #8a837d;
+}
+
+.pc-stat-link {
+  cursor: pointer;
+}
+
+.pc-stat-link:hover b {
+  color: #ff5c5c;
+}
+
+.pf-stat-link {
+  cursor: pointer;
+}
+
+/* Tab */
+.pc-tabs {
+  max-width: 1180px;
+  margin: 30px auto 0;
+  padding: 0 32px;
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid rgba(38, 34, 31, 0.08);
+}
+
+.pc-tab {
+  padding: 14px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #8a837d;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.pc-tab:hover {
+  color: #26221f;
+}
+
+.pc-tab.on {
+  color: #26221f;
+}
+
+.pc-tab.on::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px;
+  background: #ff5c5c;
+}
+
+/* 网格 */
+.pc-grid-wrap {
+  max-width: 1180px;
+  margin: 26px auto 60px;
+  padding: 0 32px;
+}
+
+.pc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.pc-cell {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 3/4;
+  background: #ece2d6;
+  cursor: pointer;
+}
+
+.pc-cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.35s ease;
+}
+
+.pc-cell:hover img {
+  transform: scale(1.06);
+}
+
+.pc-cell-ov {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.02) 55%, rgba(0, 0, 0, 0.42));
+  opacity: 0;
+  transition: opacity 0.25s;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 12px;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.pc-cell:hover .pc-cell-ov {
+  opacity: 1;
+}
+
+.pc-ov-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pc-ov-play,
+.pc-ov-multi {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+}
+
+.pc-ov-play {
+  display: none;
+}
+
+.pc-cell:hover .pc-ov-play {
+  display: inline-flex;
+}
+
+.pc-ov-like {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.pc-empty {
+  padding: 90px 0 120px;
+  text-align: center;
+  color: #b8b2ab;
+  font-size: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.pc-empty-ico {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(38, 34, 31, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d8d2ca;
+}
+
+.pc-empty-ico svg {
+  width: 30px;
+  height: 30px;
+}
+
+.pc-more {
+  padding: 22px 0 10px;
+  text-align: center;
+  color: #b8b2ab;
+  font-size: 13px;
 }
 </style>

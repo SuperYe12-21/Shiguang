@@ -52,14 +52,14 @@ public class UserController {
     public R<PageVO<UserPublicVO>> followers(@PathVariable Long id,
                                              @RequestParam(required = false) Long cursor,
                                              @RequestParam(defaultValue = "20") int limit) {
-        return R.ok(followService.followers(id, cursor, limit));
+        return R.ok(followService.followers(id, SecurityUtils.getUserId(), cursor, limit));
     }
 
     @GetMapping("/{id}/following")
     public R<PageVO<UserPublicVO>> following(@PathVariable Long id,
                                              @RequestParam(required = false) Long cursor,
                                              @RequestParam(defaultValue = "20") int limit) {
-        return R.ok(followService.following(id, cursor, limit));
+        return R.ok(followService.following(id, SecurityUtils.getUserId(), cursor, limit));
     }
 
     @PutMapping("/me")

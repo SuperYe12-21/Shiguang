@@ -54,25 +54,25 @@ public class FollowService {
     }
 
     /** 粉丝列表：按关注时间倒序游标分页 */
-    public PageVO<UserPublicVO> followers(Long userId, Long cursorId, int limit) {
+    public PageVO<UserPublicVO> followers(Long userId, Long viewerId, Long cursorId, int limit) {
         requireUser(userId);
         List<Follow> rows = followMapper.selectList(new LambdaQueryWrapper<Follow>()
                 .eq(Follow::getFolloweeId, userId)
                 .lt(cursorId != null && cursorId > 0, Follow::getId, cursorId)
                 .orderByDesc(Follow::getId)
                 .last("LIMIT " + (normalizeLimit(limit) + 1)));
-        return toUserPage(rows, Follow::getFollowerId, normalizeLimit(limit));
+        return toUserPage(rows, Follow::getFollowerId, viewerId, normalizeLimit(limit));
     }
 
     /** 关注列表：按关注时间倒序游标分页 */
-    public PageVO<UserPublicVO> following(Long userId, Long cursorId, int limit) {
+    public PageVO<UserPublicVO> following(Long userId, Long viewerId, Long cursorId, int limit) {
         requireUser(userId);
         List<Follow> rows = followMapper.selectList(new LambdaQueryWrapper<Follow>()
                 .eq(Follow::getFollowerId, userId)
                 .lt(cursorId != null && cursorId > 0, Follow::getId, cursorId)
                 .orderByDesc(Follow::getId)
                 .last("LIMIT " + (normalizeLimit(limit) + 1)));
-        return toUserPage(rows, Follow::getFolloweeId, normalizeLimit(limit));
+        return toUserPage(rows, Follow::getFolloweeId, viewerId, normalizeLimit(limit));
     }
 
     public long followerCount(Long userId) {
@@ -131,7 +131,8 @@ public class FollowService {
                 .build();
     }
 
-    private PageVO<UserPublicVO> toUserPage(List<Follow> rows, Function<Follow, Long> userIdExtractor, int limit) {
+    private PageVO<UserPublicVO> toUserPage(List<Follow> rows, Function<Follow, Long> userIdExtractor,
+                                            Long viewerId, int limit) {
         boolean hasMore = rows.size() > limit;
         List<Follow> page = hasMore ? rows.subList(0, limit) : rows;
         List<UserPublicVO> items = List.of();
@@ -140,24 +141,26 @@ public class FollowService {
             List<Long> userIds = page.stream().map(userIdExtractor).distinct().toList();
             Map<Long, User> users = userMapper.selectBatchIds(userIds).stream()
                     .collect(Collectors.toMap(User::getId, Function.identity()));
+            Map<Long, Boolean> following = followingMap(viewerId, userIds);
             items = page.stream()
                     .map(userIdExtractor)
                     .map(users::get)
                     .filter(java.util.Objects::nonNull)
-                    .map(this::toPublicVO)
+                    .map(u -> toPublicVO(u, following.getOrDefault(u.getId(), false)))
                     .toList();
             nextCursor = hasMore ? page.get(page.size() - 1).getId().toString() : null;
         }
         return PageVO.<UserPublicVO>builder().items(items).nextCursor(nextCursor).hasMore(hasMore).build();
     }
 
-    private UserPublicVO toPublicVO(User user) {
+    private UserPublicVO toPublicVO(User user, Boolean followedByMe) {
         return new UserPublicVO(
                 user.getId(),
                 user.getNickname(),
                 toAvatarUrl(user.getAvatarUrl()),
                 user.getBio(),
-                user.getCreatedAt());
+                user.getCreatedAt(),
+                followedByMe);
     }
 
     private String toAvatarUrl(String avatarUrl) {

@@ -6,7 +6,9 @@ const routes = [
   { path: '/feed', name: 'feed', component: () => import('../views/FeedView.vue') },
   { path: '/publish', name: 'publish', component: () => import('../views/PublishView.vue'), meta: { requiresAuth: true } },
   { path: '/me', name: 'me', component: () => import('../views/ProfileView.vue'), meta: { requiresAuth: true } },
-  { path: '/user/:id', name: 'user', component: () => import('../views/ProfileView.vue') }
+  { path: '/user/:id', name: 'user', component: () => import('../views/ProfileView.vue') },
+  { path: '/user/:id/followers', name: 'user-followers', component: () => import('../views/FollowListView.vue') },
+  { path: '/user/:id/following', name: 'user-following', component: () => import('../views/FollowListView.vue') }
 ]
 
 const router = createRouter({
