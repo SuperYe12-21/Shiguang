@@ -5,7 +5,7 @@
       ref="videoEl"
       class="feed-video"
       :src="post.videoUrl"
-      :poster="post.coverUrl || undefined"
+      :poster="posterOff ? undefined : (post.coverUrl || undefined)"
       loop
       :muted="muted"
       playsinline
@@ -15,7 +15,7 @@
       controlslist="nodownload noplaybackrate noremoteplayback"
       :preload="active ? 'auto' : 'metadata'"
       @click="togglePlay"
-      @play="playing = true"
+      @play="onPlay"
       @pause="onPause"
       @loadeddata="onLoadedData"
       @loadedmetadata="onMeta"
@@ -154,6 +154,7 @@ const dragPct = ref(0)
 let seekPending = 0
 let resumeAfterBar = false
 let barPointerId = null
+const posterOff = ref(false)
 
 const author = computed(() => props.post.author || {})
 const cover = computed(() => props.post.coverUrl || (props.post.images && props.post.images[0]) || '')
@@ -188,6 +189,7 @@ watch(
   (v) => {
     if (v > 0) {
       seekPending = v
+      posterOff.value = true
       applyResumeSeek(videoEl.value)
     }
   },
@@ -207,10 +209,22 @@ function applyResumeSeek(v) {
   }
 }
 
+// 续播定位完成后才起播并恢复封面展示，避免“先闪封面/先播开头再跳”
+function applyResumeOrPlay(v) {
+  if (!v) return
+  const hadPending = seekPending > 0
+  applyResumeSeek(v)
+  if (hadPending && !seekPending && props.active) tryPlay(v)
+}
+
 function onMeta() {
   const v = videoEl.value
   duration.value = v && isFinite(v.duration) ? v.duration : 0
-  applyResumeSeek(videoEl.value)
+  applyResumeOrPlay(videoEl.value)
+}
+
+function onPlay() {
+  playing.value = true
 }
 
 function onTime() {
@@ -359,6 +373,7 @@ onBeforeUnmount(() => {
 function tryPlay(v) {
   if (!v || v.readyState === 0) return
   applyResumeSeek(v)
+  if (seekPending) return
   v.muted = muted.value
   const p = v.play()
   if (p && p.catch) {
@@ -392,8 +407,9 @@ function scheduleRetry(v) {
 
 function onLoadedData() {
   const v = videoEl.value
-  applyResumeSeek(v)
-  if (v && props.active && v.paused) {
+  if (!v) return
+  applyResumeOrPlay(v)
+  if (props.active && v.paused && !seekPending) {
     tryPlay(v)
   }
 }

@@ -6,7 +6,7 @@
         ref="videoEl"
         class="video"
         :src="post.videoUrl"
-        :poster="post.coverUrl || undefined"
+        :poster="posterOff ? undefined : (post.coverUrl || undefined)"
         loop
         :muted="muted"
         playsinline
@@ -169,6 +169,7 @@ const dragPct = ref(0)
 let seekPending = 0
 let resumeAfterBar = false
 let barPointerId = null
+const posterOff = ref(false)
 const lightboxOpen = ref(false)
 const fullscreenActive = ref(false)
 let escHandler = null
@@ -210,6 +211,7 @@ watch(
   (v) => {
     if (v > 0) {
       seekPending = v
+      posterOff.value = true
       applyResumeSeek(videoEl.value)
     }
   },
@@ -229,10 +231,18 @@ function applyResumeSeek(v) {
   }
 }
 
+// 续播定位完成后：隐藏期间不再展示封面占位，避免“先闪封面再出画面”
+function applyResumeOrPlay(v) {
+  if (!v) return
+  const hadPending = seekPending > 0
+  applyResumeSeek(v)
+  if (hadPending && !seekPending && props.active) tryPlay(v)
+}
+
 function onMeta() {
   const v = videoEl.value
   duration.value = v && isFinite(v.duration) ? v.duration : 0
-  applyResumeSeek(videoEl.value)
+  applyResumeOrPlay(videoEl.value)
 }
 
 function onPlay() {
@@ -240,7 +250,7 @@ function onPlay() {
 }
 
 function onLoadedData() {
-  applyResumeSeek(videoEl.value)
+  applyResumeOrPlay(videoEl.value)
 }
 
 function onTime() {
@@ -316,7 +326,9 @@ const trackStyle = computed(() => {
 })
 
 function tryPlay(v) {
+  if (!v) return
   applyResumeSeek(v)
+  if (seekPending) return
   v.muted = muted.value
   const p = v.play()
   if (p && p.catch) {

@@ -19,7 +19,7 @@
             v-for="(post, i) in feed.posts"
             :key="post.id"
             :post="post"
-            :active="i === currentIndex"
+            :active="feedReady && i === currentIndex"
             :init-seek="seekInitFor(post)"
             :class="{ 'item-compact': commentPost && i === currentIndex }"
             @like="feed.toggleLike(post)"
@@ -62,7 +62,7 @@
               v-for="(post, i) in feed.posts"
               :key="post.id"
               :post="post"
-              :active="i === currentIndex"
+              :active="feedReady && i === currentIndex"
               :init-seek="seekInitFor(post)"
               :class="{ 'item-compact': !!commentPost }"
               @like="feed.toggleLike(post)"
@@ -125,6 +125,7 @@ const likesOwnerName = ref('')
 
 const scrollEl = ref(null)
 const currentIndex = ref(0)
+const feedReady = ref(false)
 
 const isPc = computed(() => window.innerWidth >= 768)
 
@@ -319,7 +320,11 @@ async function initFeed() {
 }
 
 onMounted(async () => {
-  await initFeed()
+  try {
+    await initFeed()
+  } finally {
+    feedReady.value = true
+  }
   // 真机上布局视口高度会包含浏览器地址栏，用 visualViewport 的真实可视高度驱动卡片尺寸
   const syncViewportHeight = () => {
     const h = window.visualViewport ? window.visualViewport.height : window.innerHeight
@@ -357,7 +362,10 @@ onMounted(async () => {
 watch(
   () => route.query,
   () => {
-    initFeed()
+    feedReady.value = false
+    initFeed().finally(() => {
+      feedReady.value = true
+    })
   }
 )
 
