@@ -7,6 +7,7 @@
         class="video"
         :src="post.videoUrl"
         :poster="posterOff ? undefined : (post.coverUrl || undefined)"
+        crossorigin="anonymous"
         loop
         :muted="muted"
         playsinline
@@ -49,11 +50,19 @@
             @error="imgFailed = true"
           />
         </div>
-        <div v-else class="image image-fallback">
-          <span class="fallback-mark">拾</span>
-          <span class="fallback-text">图片暂时无法加载</span>
-        </div>
+      <div v-else class="image image-fallback">
+        <span class="fallback-mark">拾</span>
+        <span class="fallback-text">图片暂时无法加载</span>
+      </div>
       </template>
+
+      <img
+        v-if="post.type === 'VIDEO' && !videoFailed && resumeFrame && resumeFrameVisible"
+        class="resume-frame"
+        :src="resumeFrame"
+        alt=""
+        draggable="false"
+      />
 
       
       <button
@@ -143,7 +152,8 @@ import { useAuthStore } from '../../stores/auth'
 const props = defineProps({
   post: { type: Object, required: true },
   active: { type: Boolean, default: false },
-  initSeek: { type: Number, default: 0 }
+  initSeek: { type: Number, default: 0 },
+  resumeFrame: { type: String, default: '' }
 })
 
 const emit = defineEmits(['like', 'comment', 'share', 'follow', 'author', 'progress'])
@@ -170,6 +180,8 @@ let seekPending = 0
 let resumeAfterBar = false
 let barPointerId = null
 const posterOff = ref(false)
+const resumeFrameVisible = ref(false)
+let resumeHideTimer = null
 const lightboxOpen = ref(false)
 const fullscreenActive = ref(false)
 let escHandler = null
@@ -212,11 +224,48 @@ watch(
     if (v > 0) {
       seekPending = v
       posterOff.value = true
+      if (props.resumeFrame) {
+        resumeFrameVisible.value = true
+        armResumeFrameHide(videoEl.value)
+      }
       applyResumeSeek(videoEl.value)
     }
   },
   { immediate: true }
 )
+
+// 返回续播时先用“离场帧”占位，seek 完成后立刻撤掉，避免黑屏等待
+function armResumeFrameHide(v) {
+  if (!v) return
+  const hide = () => {
+    resumeFrameVisible.value = false
+    if (resumeHideTimer) {
+      clearTimeout(resumeHideTimer)
+      resumeHideTimer = null
+    }
+  }
+  v.addEventListener('seeked', hide, { once: true })
+  resumeHideTimer = setTimeout(hide, 2500)
+}
+
+function captureFrame() {
+  const v = videoEl.value
+  if (!v || v.readyState < 2 || !v.videoWidth || !v.videoHeight) return ''
+  try {
+    const scale = 0.25
+    const c = document.createElement('canvas')
+    c.width = Math.max(2, Math.round(v.videoWidth * scale))
+    c.height = Math.max(2, Math.round(v.videoHeight * scale))
+    const ctx = c.getContext('2d')
+    if (!ctx) return ''
+    ctx.drawImage(v, 0, 0, c.width, c.height)
+    return c.toDataURL('image/jpeg', 0.6)
+  } catch (e) {
+    return ''
+  }
+}
+
+defineExpose({ captureFrame })
 
 function applyResumeSeek(v) {
   if (!seekPending || !props.active || !v) return
@@ -518,6 +567,16 @@ onBeforeUnmount(() => {
   justify-content: center;
   background: #0b0b0e;
   cursor: pointer;
+}
+
+.resume-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .video,

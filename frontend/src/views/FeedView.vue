@@ -18,9 +18,11 @@
           <FeedItem
             v-for="(post, i) in feed.posts"
             :key="post.id"
+            :ref="(el) => setCardRef(i, el)"
             :post="post"
             :active="feedReady && i === currentIndex"
             :init-seek="seekInitFor(post)"
+            :resume-frame="resumeFrameFor(post)"
             :class="{ 'item-compact': commentPost && i === currentIndex }"
             @like="feed.toggleLike(post)"
             @comment="onComment(post)"
@@ -61,9 +63,11 @@
             <PcFeedCard
               v-for="(post, i) in feed.posts"
               :key="post.id"
+              :ref="(el) => setCardRef(i, el)"
               :post="post"
               :active="feedReady && i === currentIndex"
               :init-seek="seekInitFor(post)"
+              :resume-frame="resumeFrameFor(post)"
               :class="{ 'item-compact': !!commentPost }"
               @like="feed.toggleLike(post)"
               @comment="onComment(post)"
@@ -126,6 +130,11 @@ const likesOwnerName = ref('')
 const scrollEl = ref(null)
 const currentIndex = ref(0)
 const feedReady = ref(false)
+const cardEls = []
+
+function setCardRef(i, el) {
+  cardEls[i] = el || undefined
+}
 
 const isPc = computed(() => window.innerWidth >= 768)
 
@@ -144,14 +153,19 @@ function seekInitFor(post) {
   return r && r.postId === post.id ? r.time : 0
 }
 
+function resumeFrameFor(post) {
+  const r = resumeSeek.value
+  return r && r.postId === post.id && r.frame ? r.frame : ''
+}
+
 // 首页流位置记忆：进入个人主页前记住当前作品，返回首页后恢复（避免总从第一条开始）
 const HOME_RESUME_KEY = 'sg_home_resume'
 
-function saveHomeResume(postId, time) {
+function saveHomeResume(postId, time, frame) {
   try {
     sessionStorage.setItem(
       HOME_RESUME_KEY,
-      JSON.stringify({ postId, time: Math.max(0, Math.round((time || 0) * 10) / 10) })
+      JSON.stringify({ postId, time: Math.max(0, Math.round((time || 0) * 10) / 10), frame: frame || '' })
     )
   } catch (e) {
     // 隐私模式等场景下无法写入，忽略即可
@@ -166,12 +180,12 @@ function takeHomeResume() {
     try {
       const parsed = JSON.parse(raw)
       if (parsed && typeof parsed.postId === 'number') {
-        return { postId: parsed.postId, time: Number(parsed.time) || 0 }
+        return { postId: parsed.postId, time: Number(parsed.time) || 0, frame: typeof parsed.frame === 'string' ? parsed.frame : '' }
       }
       return null
     } catch (e) {
       const legacy = Number(raw)
-      return legacy ? { postId: legacy, time: 0 } : null
+      return legacy ? { postId: legacy, time: 0, frame: '' } : null
     }
   } catch (e) {
     return null
@@ -182,7 +196,12 @@ onBeforeRouteLeave((to) => {
   if (feed.mode === 'home' && (to.path === '/me' || to.path.startsWith('/user/'))) {
     const post = currentPost.value
     if (post) {
-      saveHomeResume(post.id, post.type === 'VIDEO' ? activeVideoTime.value : 0)
+      let frame = ''
+      if (post.type === 'VIDEO') {
+        const card = cardEls[currentIndex.value]
+        frame = (card && typeof card.captureFrame === 'function' ? card.captureFrame() : '') || ''
+      }
+      saveHomeResume(post.id, post.type === 'VIDEO' ? activeVideoTime.value : 0, frame)
     }
   }
   resumeSeek.value = null
@@ -312,7 +331,7 @@ async function initFeed() {
       await locatePost(postId)
     } else if (resume && resume.postId) {
       if (resume.time > 0) {
-        resumeSeek.value = { postId: resume.postId, time: resume.time }
+        resumeSeek.value = { postId: resume.postId, time: resume.time, frame: resume.frame || '' }
       }
       await locatePost(resume.postId)
     }
