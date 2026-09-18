@@ -27,6 +27,7 @@ function Write-Warn { param([string]$Msg) Write-Host "[拾光] $Msg" -Foreground
 
 # ---------------- 停止模式 ----------------
 if ($Stop) {
+    # ---------------- 前后端：优先按 pid 文件杀进程树 ----------------
     foreach ($pair in @(@('后端', $backendPid), @('前端', $frontendPid))) {
         $name = $pair[0]
         $pidFile = $pair[1]
@@ -39,7 +40,55 @@ if ($Stop) {
             Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
         }
     }
-    Write-Step '完成。Redis / MinIO / RabbitMQ 保持运行（如需停止请手动处理）。'
+
+    # 兜底：没记录 pid 时按端口停止
+    foreach ($pair in @(@('后端', 8080), @('前端', 5173))) {
+        $name = $pair[0]
+        $port = $pair[1]
+        $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+        if ($conn) {
+            $conn | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+            Write-Step "$name 已停止 (端口 $port)"
+        }
+    }
+
+    # ---------------- Redis ----------------
+    $redisCli = Join-Path $root 'redis\redis-cli.exe'
+    if (Test-Path $redisCli) { & $redisCli shutdown 2>$null | Out-Null }
+    Start-Sleep -Milliseconds 800
+    if (Get-NetTCPConnection -LocalPort 6379 -State Listen -ErrorAction SilentlyContinue) {
+        Stop-Process -Name redis-server -Force -ErrorAction SilentlyContinue
+    }
+    if (Get-NetTCPConnection -LocalPort 6379 -State Listen -ErrorAction SilentlyContinue) {
+        Write-Warn 'Redis 未能停止，请手动关闭 redis-server.exe'
+    } else {
+        Write-Info 'Redis 已停止'
+    }
+
+    # ---------------- MinIO ----------------
+    if (Get-Process -Name minio -ErrorAction SilentlyContinue) {
+        Stop-Process -Name minio -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 800
+    }
+    if (Get-NetTCPConnection -LocalPort 9000 -State Listen -ErrorAction SilentlyContinue) {
+        Write-Warn 'MinIO 未能停止，请手动关闭 minio.exe'
+    } else {
+        Write-Info 'MinIO 已停止'
+    }
+
+    # ---------------- RabbitMQ (Windows 服务，需管理员) ----------------
+    $rmqSvc = Get-Service -Name RabbitMQ -ErrorAction SilentlyContinue
+    if ($rmqSvc -and $rmqSvc.Status -eq 'Running') {
+        try {
+            Stop-Service -Name RabbitMQ -Force -ErrorAction Stop
+            Write-Info 'RabbitMQ 服务已停止'
+        } catch {
+            Write-Warn '停止 RabbitMQ 需要管理员权限：请用管理员 PowerShell 执行 Stop-Service RabbitMQ'
+        }
+    } else {
+        Write-Info 'RabbitMQ 未在运行'
+    }
+    Write-Step '全部服务已停止。'
     exit
 }
 
