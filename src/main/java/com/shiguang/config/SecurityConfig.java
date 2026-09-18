@@ -37,6 +37,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/user/me").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/posts/**", "/api/user/**")
                         .permitAll()
+                        .requestMatchers("/api/media/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling.authenticationEntryPoint((request, response, ex) -> {
                     response.setStatus(401);

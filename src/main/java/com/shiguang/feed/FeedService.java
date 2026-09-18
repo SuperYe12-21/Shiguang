@@ -12,7 +12,9 @@ import com.shiguang.content.PostMapper;
 import com.shiguang.content.PostPublishedEvent;
 import com.shiguang.content.PostService;
 import com.shiguang.content.PostStatus;
+import com.shiguang.content.PostUpdatedEvent;
 import com.shiguang.content.PostVO;
+import com.shiguang.content.PostVisibility;
 import com.shiguang.interaction.CommentCreatedEvent;
 import com.shiguang.interaction.CommentDeletedEvent;
 import com.shiguang.interaction.LikeService;
@@ -33,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -45,6 +48,7 @@ public class FeedService {
     private static final Duration HOME_CACHE_TTL = Duration.ofSeconds(30);
     private static final int DEFAULT_LIMIT = 10;
     private static final int MAX_LIMIT = 30;
+    private static final String SEEN_CURSOR_PREFIX = "seen_";
 
     private final PostMapper postMapper;
     private final PostService postService;
@@ -53,25 +57,114 @@ public class FeedService {
     private final FollowService followService;
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
+    private final FeedSeenService feedSeenService;
 
-    /** 推荐流：时间倒序游标分页，首页走 Redis 缓存 */
+    /** 推荐流：登录用户优先未看过的内容，全部看完后按最久未看轮换；未登录保持时间倒序 */
     public PageVO<PostVO> feed(String cursor, int limit, Long viewerId) {
         int size = normalizeLimit(limit);
+        if (viewerId == null) {
+            return publicFeed(cursor, size);
+        }
+        return personalizedFeed(cursor, size, viewerId);
+    }
+
+    /** 未登录：时间倒序 + 首页短缓存 */
+    private PageVO<PostVO> publicFeed(String cursor, int size) {
         boolean firstPage = cursor == null || cursor.isBlank();
         if (firstPage && size == DEFAULT_LIMIT) {
             CachedPage cached = readHomeCache();
             if (cached != null) {
-                return buildPage(loadByIds(cached.ids()), cached.hasMore(), viewerId);
+                return buildPage(loadByIds(cached.ids()), cached.hasMore(), null);
             }
         }
 
-        List<Post> rows = queryPosts(null, cursor, size + 1, PostStatus.PUBLISHED);
+        List<Post> rows = queryPosts(null, cursor, size + 1, PostStatus.PUBLISHED, PostVisibility.PUBLIC);
         boolean hasMore = rows.size() > size;
         List<Post> page = hasMore ? rows.subList(0, size) : rows;
         if (firstPage && size == DEFAULT_LIMIT) {
             writeHomeCache(page.stream().map(Post::getId).toList(), hasMore);
         }
-        return buildPage(page, hasMore, viewerId);
+        return buildPage(page, hasMore, null);
+    }
+
+    /** 已登录：第一段给未看过的，取尽后切换为 seen_ 游标进入轮换 */
+    private PageVO<PostVO> personalizedFeed(String cursor, int size, Long viewerId) {
+        if (cursor != null && cursor.startsWith(SEEN_CURSOR_PREFIX)) {
+            return rotationPage(cursor, size, viewerId);
+        }
+        Set<Long> seen = feedSeenService.seenIds(viewerId);
+        List<Post> collected = new ArrayList<>();
+        String dbCursor = cursor == null || cursor.isBlank() ? null : cursor;
+        boolean exhausted = false;
+        int batch = Math.max(size * 3, size + 1);
+        int guard = 0;
+        while (collected.size() < size && !exhausted && guard++ < 20) {
+            List<Post> rows = queryPosts(null, dbCursor, batch, PostStatus.PUBLISHED, PostVisibility.PUBLIC);
+            if (rows.isEmpty()) {
+                exhausted = true;
+                break;
+            }
+            for (Post row : rows) {
+                if (!seen.contains(row.getId())) {
+                    collected.add(row);
+                }
+            }
+            dbCursor = cursorOf(rows.get(rows.size() - 1));
+            if (rows.size() < batch) {
+                exhausted = true;
+            }
+        }
+        if (collected.size() >= size) {
+            return buildPage(collected.subList(0, size), true, viewerId);
+        }
+        if (exhausted) {
+            if (collected.isEmpty()) {
+                return rotationPage(SEEN_CURSOR_PREFIX + "0", size, viewerId);
+            }
+            return buildPage(collected, SEEN_CURSOR_PREFIX + "0", viewerId);
+        }
+        return buildPage(collected, true, viewerId);
+    }
+
+    /** 轮换段：按最久没看顺序（score 升序）循环输出已看过的作品 */
+    private PageVO<PostVO> rotationPage(String cursor, int size, Long viewerId) {
+        long total = feedSeenService.seenCount(viewerId);
+        if (total <= 0) {
+            return emptyPage();
+        }
+        long offset = parseSeenOffset(cursor);
+        if (offset >= total) {
+            offset = 0;
+        }
+        List<Post> page = new ArrayList<>();
+        boolean wrapped = false;
+        for (int attempt = 0; attempt < 6 && page.isEmpty(); attempt++) {
+            List<Long> ids = feedSeenService.pageSeen(viewerId, offset, size);
+            if (ids.isEmpty()) {
+                break;
+            }
+            offset += ids.size();
+            Map<Long, Post> byId = loadPublishedByIds(ids);
+            for (Long id : ids) {
+                Post post = byId.get(id);
+                if (post != null) {
+                    page.add(post);
+                }
+            }
+            if (offset >= total) {
+                if (page.isEmpty() && !wrapped) {
+                    wrapped = true;
+                    offset = 0;
+                    continue;
+                }
+                break;
+            }
+        }
+        if (page.isEmpty()) {
+            return emptyPage();
+        }
+        long nextOffset = offset >= total ? 0 : offset;
+        return buildPage(page, SEEN_CURSOR_PREFIX + nextOffset, viewerId);
     }
 
     /** 个人主页作品列表：自己看全部状态，他人只看已发布 */
@@ -79,7 +172,8 @@ public class FeedService {
         int size = normalizeLimit(limit);
         boolean own = userId.equals(viewerId);
         PostStatus status = own ? null : PostStatus.PUBLISHED;
-        List<Post> rows = queryPosts(userId, cursor, size + 1, status);
+        PostVisibility visibility = own ? null : PostVisibility.PUBLIC;
+        List<Post> rows = queryPosts(userId, cursor, size + 1, status, visibility);
         boolean hasMore = rows.size() > size;
         List<Post> page = hasMore ? rows.subList(0, size) : rows;
         return buildPage(page, hasMore, viewerId);
@@ -104,7 +198,9 @@ public class FeedService {
         List<Post> posts = new ArrayList<>();
         for (PostLike like : pageLikes) {
             Post post = postMapper.selectById(like.getPostId());
-            if (post != null && PostStatus.PUBLISHED.equals(post.getStatus())) {
+            if (post != null && PostStatus.PUBLISHED.equals(post.getStatus())
+                    && (!PostVisibility.PRIVATE.equals(post.getVisibility())
+                            || post.getUserId().equals(viewerId))) {
                 posts.add(post);
             }
         }
@@ -128,13 +224,17 @@ public class FeedService {
         return epoch + "_" + like.getId();
     }
 
-    private List<Post> queryPosts(Long userId, String cursorStr, int limit, PostStatus status) {
+    private List<Post> queryPosts(Long userId, String cursorStr, int limit, PostStatus status,
+                                  PostVisibility visibility) {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
         if (userId != null) {
             wrapper.eq(Post::getUserId, userId);
         }
         if (status != null) {
             wrapper.eq(Post::getStatus, status);
+        }
+        if (visibility != null) {
+            wrapper.eq(Post::getVisibility, visibility);
         }
         if (cursorStr != null && !cursorStr.isBlank()) {
             Cursor cursor = parseCursor(cursorStr);
@@ -148,6 +248,11 @@ public class FeedService {
     }
 
     private PageVO<PostVO> buildPage(List<Post> page, boolean hasMore, Long viewerId) {
+        String nextCursor = hasMore && !page.isEmpty() ? cursorOf(page.get(page.size() - 1)) : null;
+        return buildPage(page, nextCursor, viewerId);
+    }
+
+    private PageVO<PostVO> buildPage(List<Post> page, String nextCursor, Long viewerId) {
         List<PostVO> items = new ArrayList<>();
         if (!page.isEmpty()) {
             List<Long> ids = page.stream().map(Post::getId).toList();
@@ -165,8 +270,7 @@ public class FeedService {
                 items.add(vo);
             }
         }
-        String nextCursor = hasMore ? cursorOf(page.get(page.size() - 1)) : null;
-        return PageVO.<PostVO>builder().items(items).nextCursor(nextCursor).hasMore(hasMore).build();
+        return PageVO.<PostVO>builder().items(items).nextCursor(nextCursor).hasMore(nextCursor != null).build();
     }
 
     private List<Post> loadByIds(List<Long> ids) {
@@ -178,6 +282,28 @@ public class FeedService {
         return ids.stream().map(byId::get).filter(Objects::nonNull).toList();
     }
 
+    private Map<Long, Post> loadPublishedByIds(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return postMapper.selectBatchIds(ids).stream()
+                .filter(post -> PostStatus.PUBLISHED.equals(post.getStatus())
+                        && !PostVisibility.PRIVATE.equals(post.getVisibility()))
+                .collect(Collectors.toMap(Post::getId, Function.identity(), (a, b) -> a));
+    }
+
+    private static long parseSeenOffset(String cursor) {
+        try {
+            return Long.parseLong(cursor.substring(SEEN_CURSOR_PREFIX.length()));
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
+    private static PageVO<PostVO> emptyPage() {
+        return PageVO.<PostVO>builder().items(List.of()).nextCursor(null).hasMore(false).build();
+    }
+
     @EventListener
     public void onPostPublished(PostPublishedEvent event) {
         evictHome();
@@ -185,6 +311,11 @@ public class FeedService {
 
     @EventListener
     public void onPostDeleted(PostDeletedEvent event) {
+        evictHome();
+    }
+
+    @EventListener
+    public void onPostUpdated(PostUpdatedEvent event) {
         evictHome();
     }
 

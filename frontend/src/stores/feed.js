@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { fetchFeed, likePost, unlikePost } from '../api/posts'
+import { fetchFeed, fetchPostDetail, likePost, unlikePost } from '../api/posts'
 import { fetchUserLikes, fetchUserPosts } from '../api/user'
 import { useAuthStore } from './auth'
 
@@ -63,9 +63,29 @@ export const useFeedStore = defineStore('feed', {
         this.loading = false
       }
     },
+    /** 单作品页：只放这一条，不含分页（通知跳转用） */
+    async loadSingle(postId) {
+      this.mode = 'single'
+      this.scopeUserId = null
+      this.loading = true
+      this.error = ''
+      this.posts = []
+      this.nextCursor = null
+      this.hasMore = false
+      try {
+        const detail = await fetchPostDetail(postId)
+        this.posts = detail ? [detail] : []
+        if (!detail) this.error = '作品不存在或已删除'
+      } catch (e) {
+        this.error = '作品不存在或已删除'
+      } finally {
+        this.loading = false
+      }
+    },
     async loadMore() {
       if (this.loadingMore || !this.hasMore || this.loading) return
       this.loadingMore = true
+      const rotation = (this.nextCursor || '').startsWith('seen_')
       try {
         const data = this.mode === 'user'
           ? await fetchUserPosts(this.scopeUserId, this.nextCursor, 12)
@@ -73,11 +93,16 @@ export const useFeedStore = defineStore('feed', {
             ? await fetchUserLikes(this.scopeUserId, this.nextCursor, 12)
             : await fetchFeed(this.nextCursor, 10)
         const items = data.items || []
-        const seen = new Set(this.posts.map((p) => p.id))
-        for (const item of items) {
-          if (!seen.has(item.id)) {
-            this.posts.push(item)
-            seen.add(item.id)
+        if (rotation) {
+          // 轮换重播阶段允许同一条作品再次出现
+          this.posts.push(...items)
+        } else {
+          const seen = new Set(this.posts.map((p) => p.id))
+          for (const item of items) {
+            if (!seen.has(item.id)) {
+              this.posts.push(item)
+              seen.add(item.id)
+            }
           }
         }
         this.nextCursor = data.nextCursor || null

@@ -7,15 +7,21 @@ import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.StatObjectArgs;
+import io.minio.StatObjectResponse;
 import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.UriUtils;
 
 import java.io.File;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -65,16 +71,9 @@ public class MinioStorageService implements StorageService {
 
     @Override
     public String presignedGetUrl(String objectName) {
-        try {
-            return client.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
-                    .method(Method.GET)
-                    .bucket(bucket)
-                    .object(objectName)
-                    .expiry((int) presignExpiry.toSeconds())
-                    .build());
-        } catch (Exception e) {
-            throw new IllegalStateException("生成访问地址失败", e);
-        }
+        return "/api/media/" + Arrays.stream(objectName.split("/"))
+                .map(segment -> UriUtils.encodePathSegment(segment, StandardCharsets.UTF_8))
+                .collect(Collectors.joining("/"));
     }
 
     @Override
@@ -95,6 +94,37 @@ public class MinioStorageService implements StorageService {
     public InputStream getObject(String objectName) {
         try {
             return client.getObject(GetObjectArgs.builder().bucket(bucket).object(objectName).build());
+        } catch (Exception e) {
+            throw new IllegalStateException("读取文件失败: " + objectName, e);
+        }
+    }
+
+    @Override
+    public ObjectStat stat(String objectName) throws ErrorResponseException {
+        try {
+            StatObjectResponse stat = client.statObject(StatObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(objectName)
+                    .build());
+            return new ObjectStat(stat.size(), stat.contentType());
+        } catch (ErrorResponseException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("读取文件信息失败: " + objectName, e);
+        }
+    }
+
+    @Override
+    public InputStream open(String objectName, long offset, long length) throws ErrorResponseException {
+        try {
+            return client.getObject(GetObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(objectName)
+                    .offset(offset)
+                    .length(length)
+                    .build());
+        } catch (ErrorResponseException e) {
+            throw e;
         } catch (Exception e) {
             throw new IllegalStateException("读取文件失败: " + objectName, e);
         }
