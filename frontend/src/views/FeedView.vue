@@ -1,15 +1,15 @@
 <template>
   <div class="feed-page" :class="{ 'is-pc': isPc, 'has-comment': !!commentPost }">
     <!-- 移动端：全屏竖屏流 + 底部导航 -->
-    <div v-if="feed.mode === 'user' || feed.mode === 'likes'" class="m-back-bar">
-      <button class="m-back-btn" @click="backToProfile">
+    <div v-if="feed.mode === 'user' || feed.mode === 'likes' || isSingle" class="m-back-bar">
+      <button class="m-back-btn" @click="onBack">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
         返回
       </button>
       <span class="m-back-title">{{ scopeLabel }}</span>
     </div>
     <template v-if="!isPc">
-      <main ref="scrollEl" class="m-scroll" @scroll.passive="onScroll">
+      <main ref="scrollEl" class="m-scroll" :class="{ booting: !feedReady }" @scroll.passive="onScroll">
         <template v-if="feed.loading">
           <div v-for="i in 3" :key="i" class="m-skeleton"></div>
         </template>
@@ -17,7 +17,7 @@
         <template v-else-if="feed.posts.length">
           <FeedItem
             v-for="(post, i) in feed.posts"
-            :key="post.id"
+            :key="`${post.id}-${i}`"
             :ref="(el) => setCardRef(i, el)"
             :post="post"
             :active="feedReady && i === currentIndex"
@@ -30,8 +30,9 @@
             @follow="onFollow(post)"
             @author="goAuthor(post)"
             @progress="onVideoProgress"
+            @more="onMore(post)"
           />
-          <div class="m-end">
+          <div v-if="!isSingle" class="m-end">
             <span v-if="feed.loadingMore">加载中…</span>
             <span v-else-if="!feed.hasMore">— 没有更多了 —</span>
           </div>
@@ -42,7 +43,7 @@
           <button class="sg-btn-primary" @click="retryFeed()">点击重试</button>
         </div>
         <div v-else class="m-empty">
-          <p>{{ feed.mode === 'user' ? '该用户还没有发布作品' : feed.mode === 'likes' ? '还没有点赞的作品' : '还没有作品，去发布第一条拾光吧' }}</p>
+          <p>{{ emptyText }}</p>
         </div>
       </main>
       <BottomNav @home="goHome" @me="goMe" />
@@ -51,7 +52,11 @@
     <!-- PC：抖音式一屏一卡，滚轮翻页 -->
     <template v-else>
       <div class="p-viewport" @wheel.prevent="onWheel">
-        <div class="p-stack" :style="{ transform: `translateY(-${currentIndex * 100}vh)` }">
+        <div
+          class="p-stack"
+          :class="{ booting: !feedReady }"
+          :style="{ transform: `translateY(-${currentIndex * 100}vh)` }"
+        >
           <template v-if="feed.loading && !feed.posts.length">
             <div class="p-loading">
               <span class="p-loading-mark">拾</span>
@@ -62,7 +67,7 @@
           <template v-else-if="feed.posts.length">
             <PcFeedCard
               v-for="(post, i) in feed.posts"
-              :key="post.id"
+              :key="`${post.id}-${i}`"
               :ref="(el) => setCardRef(i, el)"
               :post="post"
               :active="feedReady && i === currentIndex"
@@ -75,8 +80,9 @@
               @follow="onFollow(post)"
               @author="goAuthor(post)"
               @progress="onVideoProgress"
+              @more="onMore(post)"
             />
-            <div class="p-end">
+            <div v-if="!isSingle" class="p-end">
               <span v-if="feed.loadingMore">加载中…</span>
               <span v-else-if="!feed.hasMore">— 没有更多了 —</span>
             </div>
@@ -87,22 +93,44 @@
             <button class="sg-btn-primary" @click="retryFeed()">点击重试</button>
           </div>
           <div v-else class="p-empty">
-            <p>{{ feed.mode === 'user' ? '该用户还没有发布作品' : feed.mode === 'likes' ? '还没有点赞的作品' : '还没有作品，去发布第一条拾光吧' }}</p>
+            <p>{{ emptyText }}</p>
           </div>
         </div>
       </div>
+
+      <!-- 单作品页：左上角返回（回到来处，通常是消息页） -->
+      <button v-if="isSingle" class="p-back" @click="onBack">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        返回
+      </button>
 
       <!-- 顶部迷你导航 -->
       <nav class="p-topbar">
         <span class="p-logo">拾光</span>
         <button class="p-nav-btn on" @click="goHome">首页</button>
         <button class="p-nav-btn" @click="router.push('/publish')">发布</button>
-        <button class="p-nav-btn" @click="todo('消息')">消息</button>
+        <button class="p-nav-btn" @click="goMessages">
+          消息
+          <UnreadBadge :count="notification.unread.total" />
+        </button>
         <button class="p-nav-btn" @click="goMe">我的</button>
       </nav>
     </template>
 
-    <CommentPanel v-if="commentPost" :post="commentPost" @close="commentPost = null" />
+    <CommentPanel
+      v-if="commentPost"
+      :post="commentPost"
+      :focus-root-id="focus.rootId"
+      :focus-comment-id="focus.commentId"
+      @close="closeComment"
+    />
+    <PostMorePanel
+      v-if="morePost"
+      :post="morePost"
+      @close="morePost = null"
+      @updated="onPostUpdated"
+      @deleted="onPostDeleted"
+    />
   </div>
 </template>
 
@@ -119,12 +147,19 @@ import FeedItem from '../components/mobile/FeedItem.vue'
 import BottomNav from '../components/mobile/BottomNav.vue'
 import PcFeedCard from '../components/pc/PcFeedCard.vue'
 import CommentPanel from '../components/CommentPanel.vue'
+import PostMorePanel from '../components/PostMorePanel.vue'
+import UnreadBadge from '../components/UnreadBadge.vue'
+import { useNotificationStore } from '../stores/notification'
 
 const route = useRoute()
 const router = useRouter()
 const feed = useFeedStore()
 const auth = useAuthStore()
+const notification = useNotificationStore()
 const commentPost = ref(null)
+const morePost = ref(null)
+/** 通知跳转带来的评论定位参数，交给 CommentPanel 消费 */
+const focus = ref({ rootId: null, commentId: null })
 const likesOwnerName = ref('')
 
 const scrollEl = ref(null)
@@ -138,7 +173,17 @@ function setCardRef(i, el) {
 
 const isPc = computed(() => window.innerWidth >= 768)
 
+/** 单作品页（/post/:id）：只放一条，不支持上下滑 */
+const isSingle = computed(() => feed.mode === 'single')
+
 const currentPost = computed(() => feed.posts[currentIndex.value] || null)
+
+const emptyText = computed(() => {
+  if (feed.mode === 'single') return '作品不存在或已删除'
+  if (feed.mode === 'user') return '该用户还没有发布作品'
+  if (feed.mode === 'likes') return '还没有点赞的作品'
+  return '还没有作品，去发布第一条拾光吧'
+})
 const activeVideoTime = ref(0)
 const resumeSeek = ref(null)
 
@@ -161,11 +206,16 @@ function resumeFrameFor(post) {
 // 首页流位置记忆：进入个人主页前记住当前作品，返回首页后恢复（避免总从第一条开始）
 const HOME_RESUME_KEY = 'sg_home_resume'
 
-function saveHomeResume(postId, time, frame) {
+function saveHomeResume(postId, time, frame, index) {
   try {
     sessionStorage.setItem(
       HOME_RESUME_KEY,
-      JSON.stringify({ postId, time: Math.max(0, Math.round((time || 0) * 10) / 10), frame: frame || '' })
+      JSON.stringify({
+        postId,
+        time: Math.max(0, Math.round((time || 0) * 10) / 10),
+        frame: frame || '',
+        index: Number.isInteger(index) && index >= 0 ? index : -1
+      })
     )
   } catch (e) {
     // 隐私模式等场景下无法写入，忽略即可
@@ -180,7 +230,12 @@ function takeHomeResume() {
     try {
       const parsed = JSON.parse(raw)
       if (parsed && typeof parsed.postId === 'number') {
-        return { postId: parsed.postId, time: Number(parsed.time) || 0, frame: typeof parsed.frame === 'string' ? parsed.frame : '' }
+        return {
+          postId: parsed.postId,
+          time: Number(parsed.time) || 0,
+          frame: typeof parsed.frame === 'string' ? parsed.frame : '',
+          index: Number.isInteger(parsed.index) ? parsed.index : -1
+        }
       }
       return null
     } catch (e) {
@@ -193,7 +248,8 @@ function takeHomeResume() {
 }
 
 onBeforeRouteLeave((to) => {
-  if (feed.mode === 'home' && (to.path === '/me' || to.path.startsWith('/user/'))) {
+  // 离开首页去任何页面（个人主页、发布页、设置等）都记住当前位置，返回时回到原处
+  if (feed.mode === 'home' && to.path !== '/feed') {
     const post = currentPost.value
     if (post) {
       let frame = ''
@@ -201,13 +257,17 @@ onBeforeRouteLeave((to) => {
         const card = cardEls[currentIndex.value]
         frame = (card && typeof card.captureFrame === 'function' ? card.captureFrame() : '') || ''
       }
-      saveHomeResume(post.id, post.type === 'VIDEO' ? activeVideoTime.value : 0, frame)
+      saveHomeResume(post.id, post.type === 'VIDEO' ? activeVideoTime.value : 0, frame, currentIndex.value)
     }
   }
   resumeSeek.value = null
 })
 
 const scopeLabel = computed(() => {
+  if (feed.mode === 'single') {
+    const nick = feed.posts[0]?.author?.nickname || ''
+    return nick ? nick + ' 的作品' : '作品'
+  }
   if (feed.mode === 'likes') {
     const mine = !!auth.userId && feed.scopeUserId === auth.userId
     return (mine ? '我的' : (likesOwnerName.value ? likesOwnerName.value + ' 的' : 'Ta 的')) + '点赞'
@@ -223,12 +283,46 @@ let keydownHandler = null
 let wheelLocked = false
 let wheelTimer = null
 
-async function locatePost(postId) {
-  const found = feed.posts.findIndex((p) => p.id === postId)
+function findPostIndex(postId, hintIndex = -1) {
+  if (hintIndex < 0) {
+    return feed.posts.findIndex((p) => p.id === postId)
+  }
+  // 轮换阶段同一作品可能出现多次，取离上次停留位置最近的一次
+  let found = -1
+  let best = Infinity
+  feed.posts.forEach((p, i) => {
+    const distance = Math.abs(i - hintIndex)
+    if (p.id === postId && distance < best) {
+      best = distance
+      found = i
+    }
+  })
+  return found
+}
+
+async function locatePost(postId, hintIndex = -1) {
+  const found = findPostIndex(postId, hintIndex)
   if (found >= 0) {
     currentIndex.value = found
     await scrollToIndex(found)
     return
+  }
+  // 首页里目标可能落在后面的分页中（例如刚发布完列表已重新加载），按需继续向后加载
+  if (feed.mode === 'home') {
+    let guard = 0
+    while (feed.hasMore && guard++ < 6) {
+      const before = feed.posts.length
+      await feed.loadMore()
+      if (feed.posts.length === before) {
+        break
+      }
+      const loaded = findPostIndex(postId, hintIndex)
+      if (loaded >= 0) {
+        currentIndex.value = loaded
+        await scrollToIndex(loaded)
+        return
+      }
+    }
   }
   if ((feed.mode === 'user' || feed.mode === 'likes') && feed.posts.length) {
     // 用户/点赞模式下未找到（作品可能不在第一页），先尝试精确加载该作品
@@ -263,17 +357,38 @@ function scrollToIndex(index) {
 }
 
 function backToProfile() {
+  const uid = feed.scopeUserId
+  // 发布完成后进入的作品流：返回直接回到个人主页（发布页已用 replace 移出历史）
+  if (route.query.from === 'publish') {
+    router.replace(uid === auth.userId ? '/me' : '/user/' + uid)
+    return
+  }
   const state = window.history.state
   if (state && state.back) {
     router.back()
     return
   }
-  const uid = feed.scopeUserId
   router.replace(uid === auth.userId ? '/me' : '/user/' + uid)
 }
 
+/** 返回条：作品流回主页，单作品页回上一页（通知点进来的就是消息页） */
+function onBack() {
+  if (isSingle.value) {
+    const state = window.history.state
+    if (state && state.back) {
+      router.back()
+      return
+    }
+    router.replace('/notifications')
+    return
+  }
+  backToProfile()
+}
+
 function retryFeed() {
-  if (feed.mode === 'likes') {
+  if (feed.mode === 'single') {
+    feed.loadSingle(Number(route.params.id || ''))
+  } else if (feed.mode === 'likes') {
     feed.loadLikesFirstPage(feed.scopeUserId)
   } else if (feed.mode === 'user') {
     feed.loadUserFirstPage(feed.scopeUserId)
@@ -293,6 +408,17 @@ async function loadLikesOwnerName(userId) {
 
 
 async function initFeed() {
+  await loadFeedForQuery()
+  openCommentFromQuery()
+}
+
+async function loadFeedForQuery() {
+  // 单作品页：只加载被点开的那一条
+  const singleId = Number(route.params.id || '')
+  if (singleId) {
+    await feed.loadSingle(singleId)
+    return
+  }
   const postId = Number(route.query.postId || '')
   const userId = Number(route.query.userId || '')
   const likesOf = Number(route.query.likesOf || '')
@@ -333,7 +459,7 @@ async function initFeed() {
       if (resume.time > 0) {
         resumeSeek.value = { postId: resume.postId, time: resume.time, frame: resume.frame || '' }
       }
-      await locatePost(resume.postId)
+      await locatePost(resume.postId, resume.index)
     }
   }
 }
@@ -377,9 +503,9 @@ onMounted(async () => {
   window.addEventListener('keydown', keydownHandler)
 })
 
-// 路由参数变化（主页点作品/底部首页）时重新初始化
+// 路由变化（主页点作品/底部首页/通知点进另一条作品）时重新初始化
 watch(
-  () => route.query,
+  () => route.fullPath,
   () => {
     feedReady.value = false
     initFeed().finally(() => {
@@ -450,9 +576,17 @@ function goMe() {
   router.push('/me')
 }
 
+function goMessages() {
+  if (!auth.isLoggedIn) {
+    router.push('/login')
+    return
+  }
+  router.push('/notifications')
+}
+
 // 首页按钮：已在首页流时点击 = 刷新回第一屏；在他人作品流/点赞流时先回到首页
 function goHome() {
-  commentPost.value = null
+  closeComment()
   const scoped = feed.mode === 'user' || feed.mode === 'likes'
   const deepLinked = !!route.query.postId
   if (feed.mode === 'home' && !scoped && !deepLinked) {
@@ -500,7 +634,54 @@ function onComment(post) {
     location.href = '/login'
     return
   }
+  focus.value = { rootId: null, commentId: null }
   commentPost.value = post
+}
+
+function closeComment() {
+  commentPost.value = null
+  focus.value = { rootId: null, commentId: null }
+}
+
+/** 来自通知的跳转：?comment=1[&rootId=&commentId=]，定位完成后自动打开评论面板 */
+function openCommentFromQuery() {
+  if (route.query.comment !== '1') return
+  const post = currentPost.value
+  if (!post) return
+  focus.value = {
+    rootId: Number(route.query.rootId || '') || null,
+    commentId: Number(route.query.commentId || '') || null
+  }
+  commentPost.value = post
+}
+
+function onMore(post) {
+  closeComment()
+  morePost.value = post
+}
+
+/** 可见性 / 文案变更：就地更新当前列表里的这条作品 */
+function onPostUpdated(patch) {
+  const target = feed.posts.find((p) => p.id === patch.id)
+  if (target) {
+    Object.assign(target, patch)
+  }
+}
+
+/** 删除作品：从列表移除，停留在同一个位置继续播放下一条 */
+function onPostDeleted(patch) {
+  morePost.value = null
+  const index = feed.posts.findIndex((p) => p.id === patch.id)
+  if (index < 0) {
+    return
+  }
+  feed.posts.splice(index, 1)
+  if (currentIndex.value > feed.posts.length - 1) {
+    currentIndex.value = Math.max(0, feed.posts.length - 1)
+  }
+  nextTick(() => {
+    scrollToIndex(currentIndex.value)
+  })
 }
 
 async function onShare(post) {
@@ -529,9 +710,6 @@ async function onFollow(post) {
   }
 }
 
-function todo(label) {
-  ElMessage.info(`${label}功能开发中，敬请期待`)
-}
 </script>
 
 <style scoped>
@@ -549,12 +727,18 @@ function todo(label) {
   -webkit-overflow-scrolling: touch;
 }
 
-/* 用户作品流：返回条 */
+/* 开机定位阶段：关掉滚动吸附，避免恢复观看位置时被吸附动画带着滑过去 */
+.m-scroll.booting {
+  scroll-snap-type: none;
+}
+
+/* 用户作品流 / 单作品页：返回条 */
 .m-back-bar {
   position: fixed;
   top: 12px;
   left: 12px;
-  z-index: 120;
+  /* 必须高于评论面板遮罩（2000），否则开着评论点返回会被遮罩吃掉第一下 */
+  z-index: 2200;
   pointer-events: auto;
   display: flex;
   align-items: center;
@@ -651,6 +835,11 @@ function todo(label) {
   transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
+/* 开机定位阶段：关掉过渡，返回首页时直接停在刚才那条，而不是从第一条滑过去 */
+.p-stack.booting {
+  transition: none;
+}
+
 .p-stack > .pc-slide,
 .p-stack > .p-end,
 .p-stack > .p-loading,
@@ -694,6 +883,35 @@ function todo(label) {
 }
 
 /* 顶部迷你导航 */
+.p-back {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  /* 同移动端：压在评论面板遮罩（2000）之上，保证一次点击就能返回 */
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 18px 0 12px;
+  border-radius: 999px;
+  background: rgba(16, 15, 18, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.p-back:hover {
+  background: rgba(16, 15, 18, 0.82);
+}
+
 .p-topbar {
   position: fixed;
   top: 18px;
@@ -741,6 +959,9 @@ function todo(label) {
 }
 
 .p-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 14px;
   border-radius: var(--sg-radius-full);
   color: rgba(255, 255, 255, 0.75);

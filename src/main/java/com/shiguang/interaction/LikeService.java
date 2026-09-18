@@ -6,6 +6,7 @@ import com.shiguang.common.BizException;
 import com.shiguang.content.Post;
 import com.shiguang.content.PostMapper;
 import com.shiguang.content.PostStatus;
+import com.shiguang.content.PostVisibility;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -13,6 +14,7 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -55,19 +57,21 @@ public class LikeService {
     private final PostLikeMapper postLikeMapper;
     private final CommentMapper commentMapper;
     private final CommentLikeMapper commentLikeMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public LikeVO likePost(Long postId, Long userId) {
-        Post post = requirePublishedPost(postId);
+        Post post = requireAccessiblePost(postId, userId);
         ensurePostLikedInitialized(postId);
         if (addMember(postSetKey(postId), userId)) {
             incrPending("p:" + postId, 1);
             insertIgnore(postLikeMapper, new PostLike(postId, userId));
+            eventPublisher.publishEvent(new PostLikedEvent(postId, userId));
         }
         return postState(post, userId);
     }
 
     public LikeVO unlikePost(Long postId, Long userId) {
-        Post post = requirePublishedPost(postId);
+        Post post = requireAccessiblePost(postId, userId);
         ensurePostLikedInitialized(postId);
         if (removeMember(postSetKey(postId), userId)) {
             incrPending("p:" + postId, -1);
@@ -84,6 +88,7 @@ public class LikeService {
         if (addMember(commentSetKey(commentId), userId)) {
             incrPending("c:" + commentId, 1);
             insertIgnore(commentLikeMapper, new CommentLike(commentId, userId));
+            eventPublisher.publishEvent(new CommentLikedEvent(commentId, userId));
         }
         return commentState(comment, userId);
     }
@@ -189,6 +194,15 @@ public class LikeService {
         }
         if (post.getStatus() != PostStatus.PUBLISHED) {
             throw new BizException(1, "作品尚未发布，暂时无法互动");
+        }
+        return post;
+    }
+
+    /** 校验作品对该用户可访问：仅自己可见的作品只有作者本人能互动 */
+    public Post requireAccessiblePost(Long postId, Long viewerId) {
+        Post post = requirePublishedPost(postId);
+        if (post.getVisibility() == PostVisibility.PRIVATE && !post.getUserId().equals(viewerId)) {
+            throw new BizException(404, "作品不存在或已删除");
         }
         return post;
     }

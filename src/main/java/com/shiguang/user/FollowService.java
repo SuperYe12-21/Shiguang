@@ -6,6 +6,7 @@ import com.shiguang.common.PageVO;
 import com.shiguang.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +30,7 @@ public class FollowService {
     private final FollowMapper followMapper;
     private final UserMapper userMapper;
     private final StorageService storageService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** 关注（重复关注幂等） */
     public FollowVO follow(Long followerId, Long followeeId) {
@@ -38,6 +40,7 @@ public class FollowService {
         follow.setFolloweeId(followeeId);
         try {
             followMapper.insert(follow);
+            eventPublisher.publishEvent(new UserFollowedEvent(followerId, followeeId));
         } catch (DuplicateKeyException e) {
             log.debug("重复关注，忽略: follower={} followee={}", followerId, followeeId);
         }

@@ -13,9 +13,10 @@
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
             <span>发布</span>
           </button>
-          <button class="pc-side-btn" @click="msgTodo">
+          <button class="pc-side-btn" @click="router.push('/notifications')">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
             <span>消息</span>
+            <UnreadBadge :count="notification.unread.total" />
           </button>
           <div class="pc-side-grow"></div>
           <button class="pc-side-btn" :class="{ on: isMe }" @click="goMe">
@@ -87,6 +88,9 @@
                     <svg viewBox="0 0 24 24" width="11" height="11" fill="#fff"><path d="M4 5h16v2H4V5zm0 6h16v2H4v-2zm0 6h10v2H4v-2z"/></svg>
                   </span>
                   <span class="pc-ov-tag pc-ov-like"><svg viewBox="0 0 24 24" width="10" height="10" fill="#fff"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>{{ formatCount(p.likeCount) }}</span>
+                </span>
+                <span v-if="p.visibility === 'PRIVATE'" class="pc-cell-lock" title="仅自己可见">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="#fff"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 12c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
                 </span>
               </div>
             </div>
@@ -185,6 +189,9 @@
           <span class="pf-cell-like">
             <svg viewBox="0 0 24 24" width="9" height="9" fill="#ff5c5c"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
             {{ formatCount(p.likeCount) }}
+          </span>
+          <span v-if="p.visibility === 'PRIVATE'" class="pf-cell-lock" title="仅自己可见">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="#fff"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 12c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
           </span>
         </div>
       </template>
@@ -300,11 +307,14 @@ import { ElMessage } from 'element-plus'
 import { fetchMe, fetchProfile, fetchUserLikes, fetchUserPosts, updateMe, followUser, unfollowUser } from '../api/user'
 import { presignUpload } from '../api/posts'
 import { useAuthStore } from '../stores/auth'
+import { useNotificationStore } from '../stores/notification'
 import BottomNav from '../components/mobile/BottomNav.vue'
+import UnreadBadge from '../components/UnreadBadge.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const notification = useNotificationStore()
 
 const isPc = ref(typeof window !== 'undefined' ? window.innerWidth >= 768 : false)
 function syncIsPc() {
@@ -492,9 +502,6 @@ function goFollowing() {
   router.push(`/user/${profile.value.id}/following`)
 }
 
-function msgTodo() {
-  ElMessage.info('消息功能开发中，敬请期待')
-}
 
 function openRemark() {
   remarkText.value = remark.value || ''
@@ -1569,6 +1576,22 @@ onBeforeUnmount(() => {
     color: rgba(255, 255, 255, 0.3);
     border-top: 1px solid rgba(255, 255, 255, 0.05);
   }
+
+  /* 仅自己可见角标 */
+  .pf-cell-lock {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
 }
 </style>
 
@@ -2107,5 +2130,21 @@ onBeforeUnmount(() => {
 @keyframes sg-pop-in {
   from { opacity: 0; transform: scale(0.92); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* 仅自己可见角标 */
+.pc-cell-lock {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 </style>
