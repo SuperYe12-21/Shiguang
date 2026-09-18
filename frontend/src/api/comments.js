@@ -8,6 +8,12 @@ export const createComment = (postId, content) =>
 
 export const deleteComment = (commentId) => http.delete('/comments/' + commentId)
 
+export const fetchReplies = (commentId, cursor, limit = 10) =>
+  http.get('/comments/' + commentId + '/replies', { params: { cursor, limit } })
+
+export const createReply = (commentId, content) =>
+  http.post('/comments/' + commentId + '/replies', { content })
+
 export const likeComment = (commentId) => http.post('/comments/' + commentId + '/like')
 
 export const unlikeComment = (commentId) => http.delete('/comments/' + commentId + '/like')

@@ -13,6 +13,19 @@ public class CommentVO {
 
     private Long postId;
 
+    private Long parentId;
+
+    private Long rootId;
+
+    /** 被回复者，用于渲染「回复 @某某」 */
+    private ReplyToUser replyToUser;
+
+    /** 顶层评论下的回复数，回复自身为 null */
+    private Integer replyCount;
+
+    /** 当前用户是否有权删除（评论作者本人或作品作者） */
+    private Boolean canDelete;
+
     private Long userId;
 
     private String content;
@@ -37,5 +50,14 @@ public class CommentVO {
         private String nickname;
 
         private String avatarUrl;
+    }
+
+    @Data
+    @Builder
+    public static class ReplyToUser {
+
+        private Long id;
+
+        private String nickname;
     }
 }

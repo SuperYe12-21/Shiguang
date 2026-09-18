@@ -13,35 +13,96 @@
           <div v-if="loading" class="cp-state">评论加载中…</div>
           <div v-else-if="!comments.length" class="cp-state">还没有评论，来抢沙发吧～</div>
 
-          <div v-for="c in comments" :key="c.id" class="cp-item">
-            <img class="cp-avatar" :src="avatarSrc(c)" @error="onAvatarError(c)" alt="头像" />
-            <div class="cp-main">
-              <div class="cp-meta">
-                <span class="cp-name">{{ c.author ? c.author.nickname : '拾光用户' }}</span>
-                <span class="cp-time">{{ formatTime(c.createdAt) }}</span>
+          <div v-for="c in comments" :key="c.id" class="cp-thread">
+            <div
+              class="cp-item"
+              :class="{ 'cp-flash': flashKey === 't' + c.id }"
+              :ref="(el) => setRowRef('t' + c.id, el)"
+            >
+              <img class="cp-avatar" :src="avatarSrc(c)" @error="onAvatarError(c)" alt="头像" />
+              <div class="cp-main">
+                <div class="cp-meta">
+                  <span class="cp-name">{{ c.author ? c.author.nickname : '拾光用户' }}</span>
+                  <span v-if="isPostAuthor(c)" class="cp-badge">作者</span>
+                  <span class="cp-time">{{ formatTime(c.createdAt) }}</span>
+                </div>
+                <p class="cp-content">{{ c.content }}</p>
+                <div class="cp-actions">
+                  <button class="cp-act" @click="startReply(c, null)">回复</button>
+                  <button v-if="c.canDelete" class="cp-act cp-act-del" @click="removeTop(c)">删除</button>
+                </div>
               </div>
-              <p class="cp-content">{{ c.content }}</p>
-              <button v-if="c.mine" class="cp-del" @click="remove(c)">删除</button>
+              <button class="cp-like" :class="{ 'is-liked': c.liked }" @click="toggleLike(c)">
+                <svg viewBox="0 0 24 24" width="18" height="18" :fill="c.liked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                <span>{{ formatCount(c.likeCount) }}</span>
+              </button>
             </div>
-            <button class="cp-like" :class="{ 'is-liked': c.liked }" @click="toggleLike(c)">
-              <svg viewBox="0 0 24 24" width="18" height="18" :fill="c.liked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-              <span>{{ formatCount(c.likeCount) }}</span>
+
+            <button v-if="thread(c).expanded" class="cp-collapse" @click="collapse(c)">收起回复</button>
+            <button v-else-if="c.replyCount > 0" class="cp-expand" @click="expand(c)">
+              查看 {{ c.replyCount }} 条回复
             </button>
+
+            <div v-if="thread(c).expanded" class="cp-replies">
+              <div v-if="thread(c).loading" class="cp-state cp-state-sm">回复加载中…</div>
+              <div
+                v-for="r in thread(c).items"
+                :key="r.id"
+                class="cp-item cp-item-sub"
+                :class="{ 'cp-flash': flashKey === 'r' + r.id }"
+                :ref="(el) => setRowRef('r' + r.id, el)"
+              >
+                <img class="cp-avatar cp-avatar-sm" :src="avatarSrc(r)" @error="onAvatarError(r)" alt="头像" />
+                <div class="cp-main">
+                  <div class="cp-meta">
+                    <span class="cp-name">{{ r.author ? r.author.nickname : '拾光用户' }}</span>
+                    <span v-if="isPostAuthor(r)" class="cp-badge">作者</span>
+                    <span class="cp-time">{{ formatTime(r.createdAt) }}</span>
+                  </div>
+                  <p class="cp-content">
+                    <span v-if="r.replyToUser" class="cp-at">回复 @{{ r.replyToUser.nickname }}：</span>{{ r.content }}
+                  </p>
+                  <div class="cp-actions">
+                    <button class="cp-act" @click="startReply(r, c)">回复</button>
+                    <button v-if="r.canDelete" class="cp-act cp-act-del" @click="removeReply(r, c)">删除</button>
+                  </div>
+                </div>
+                <button class="cp-like" :class="{ 'is-liked': r.liked }" @click="toggleLike(r)">
+                  <svg viewBox="0 0 24 24" width="16" height="16" :fill="r.liked ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                  <span>{{ formatCount(r.likeCount) }}</span>
+                </button>
+              </div>
+              <button
+                v-if="thread(c).hasMore"
+                class="cp-expand cp-expand-sub"
+                :disabled="thread(c).loadingMore"
+                @click="loadMoreReplies(c)"
+              >
+                {{ thread(c).loadingMore ? '加载中…' : '查看更多回复' }}
+              </button>
+            </div>
           </div>
 
           <div v-if="loadingMore" class="cp-state">加载更多…</div>
         </div>
 
         <footer class="cp-foot">
-          <input
-            v-model="draft"
-            class="cp-input"
-            :placeholder="auth.isLoggedIn ? '说点什么吧…' : '登录后参与评论'"
-            maxlength="1000"
-            :disabled="submitting"
-            @keyup.enter="submit"
-          />
-          <button class="cp-send" :disabled="submitting || !draft.trim()" @click="submit">发送</button>
+          <div v-if="replyTarget" class="cp-reply-hint">
+            <span class="cp-reply-hint-text">回复 @{{ replyTarget.nickname }}</span>
+            <button class="cp-reply-cancel" @click="cancelReply">取消</button>
+          </div>
+          <div class="cp-foot-row">
+            <input
+              ref="inputEl"
+              v-model="draft"
+              class="cp-input"
+              :placeholder="replyTarget ? '回复 ' + replyTarget.nickname : (auth.isLoggedIn ? '说点什么吧…' : '登录后参与评论')"
+              maxlength="1000"
+              :disabled="submitting"
+              @keyup.enter="submit"
+            />
+            <button class="cp-send" :disabled="submitting || !draft.trim()" @click="submit">发送</button>
+          </div>
         </footer>
       </section>
     </div>
@@ -49,20 +110,36 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { fetchComments, createComment, deleteComment, likeComment, unlikeComment } from '../api/comments'
+import {
+  fetchComments,
+  createComment,
+  deleteComment,
+  likeComment,
+  unlikeComment,
+  fetchReplies,
+  createReply
+} from '../api/comments'
 import { useAuthStore } from '../stores/auth'
 
 const props = defineProps({
-  post: { type: Object, required: true }
+  post: { type: Object, required: true },
+  // 通知跳转的定位目标：先定位到 rootId 楼层，再定位到楼层里的 focusCommentId
+  focusRootId: { type: Number, default: null },
+  focusCommentId: { type: Number, default: null }
 })
 const emit = defineEmits(['close'])
+
+const REPLY_PAGE = 10
+const FLASH_MS = 2000
+const FOCUS_MAX_PAGES = 5
 
 const auth = useAuthStore()
 const isPc = computed(() => window.innerWidth >= 768)
 
 const listEl = ref(null)
+const inputEl = ref(null)
 const comments = ref([])
 const cursor = ref(null)
 const hasMore = ref(true)
@@ -70,6 +147,75 @@ const loading = ref(false)
 const loadingMore = ref(false)
 const draft = ref('')
 const submitting = ref(false)
+const replyTarget = ref(null)
+
+const rowEls = {}
+const flashKey = ref('')
+let flashTimer = null
+
+function setRowRef(key, el) {
+  if (el) rowEls[key] = el
+  else delete rowEls[key]
+}
+
+/** 滚动到目标行并短暂高亮，找不位置就静默放弃 */
+function flashRow(key) {
+  const el = rowEls[key]
+  const list = listEl.value
+  if (!el || !list) return
+  const listRect = list.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+  const top = list.scrollTop + (elRect.top - listRect.top) - list.clientHeight / 2 + elRect.height / 2
+  list.scrollTo({ top: Math.max(0, top) })
+  if (flashTimer) clearTimeout(flashTimer)
+  flashKey.value = key
+  flashTimer = setTimeout(() => {
+    flashKey.value = ''
+  }, FLASH_MS)
+}
+
+async function focusTarget() {
+  const rootId = props.focusRootId
+  if (!rootId) return
+  let pages = 0
+  let root = comments.value.find((c) => c.id === rootId)
+  while (!root && hasMore.value && pages < FOCUS_MAX_PAGES) {
+    await loadMore()
+    pages += 1
+    root = comments.value.find((c) => c.id === rootId)
+  }
+  if (!root) return
+  const targetId = props.focusCommentId
+  if (!targetId || targetId === rootId) {
+    await nextTick()
+    flashRow('t' + rootId)
+    return
+  }
+  if (!thread(root).items.some((r) => r.id === targetId)) {
+    await loadThread(root, targetId, FOCUS_MAX_PAGES)
+  }
+  if (!thread(root).items.some((r) => r.id === targetId)) return
+  await nextTick()
+  flashRow('r' + targetId)
+}
+
+const threads = reactive({})
+const EMPTY_THREAD = Object.freeze({
+  expanded: false, items: [], cursor: null, hasMore: false, loading: false, loadingMore: false
+})
+
+function thread(c) {
+  return threads[c.id] || EMPTY_THREAD
+}
+
+function ensureThread(id) {
+  if (!threads[id]) {
+    threads[id] = {
+      expanded: false, items: [], cursor: null, hasMore: false, loading: false, loadingMore: false
+    }
+  }
+  return threads[id]
+}
 
 async function loadFirst() {
   if (loading.value) return
@@ -77,6 +223,7 @@ async function loadFirst() {
   try {
     const data = await fetchComments(props.post.id, null, 20)
     comments.value = data.items || []
+    comments.value.forEach((c) => ensureThread(c.id))
     cursor.value = data.nextCursor || null
     hasMore.value = !!data.hasMore
   } catch (e) {
@@ -96,6 +243,7 @@ async function loadMore() {
     for (const item of items) {
       if (!seen.has(item.id)) {
         comments.value.push(item)
+        ensureThread(item.id)
         seen.add(item.id)
       }
     }
@@ -116,6 +264,66 @@ function onScroll() {
   }
 }
 
+/** 展开楼层；targetId 不为空时持续翻页直到覆盖到这条新回复 */
+async function loadThread(c, targetId, maxPages) {
+  const st = ensureThread(c.id)
+  st.expanded = true
+  st.items = []
+  st.cursor = null
+  st.hasMore = true
+  st.loading = true
+  let pages = 0
+  try {
+    while (st.hasMore && pages < maxPages) {
+      const data = await fetchReplies(c.id, st.cursor, REPLY_PAGE)
+      const items = data.items || []
+      const seen = new Set(st.items.map((x) => x.id))
+      for (const item of items) {
+        if (!seen.has(item.id)) st.items.push(item)
+      }
+      st.cursor = data.nextCursor || null
+      st.hasMore = !!data.hasMore
+      pages += 1
+      if (targetId && items.some((x) => x.id === targetId)) break
+    }
+  } catch (e) {
+    if (!st.items.length) st.expanded = false
+  } finally {
+    st.loading = false
+  }
+}
+
+function expand(c) {
+  loadThread(c, null, 1)
+}
+
+function collapse(c) {
+  const st = ensureThread(c.id)
+  st.expanded = false
+  st.items = []
+  st.cursor = null
+  st.hasMore = false
+}
+
+async function loadMoreReplies(c) {
+  const st = ensureThread(c.id)
+  if (st.loadingMore || !st.hasMore) return
+  st.loadingMore = true
+  try {
+    const data = await fetchReplies(c.id, st.cursor, REPLY_PAGE)
+    const seen = new Set(st.items.map((x) => x.id))
+    for (const item of data.items || []) {
+      if (!seen.has(item.id)) st.items.push(item)
+    }
+    st.cursor = data.nextCursor || null
+    st.hasMore = !!data.hasMore
+  } catch (e) {
+    // 静默，可重试
+  } finally {
+    st.loadingMore = false
+  }
+}
+
 function requireLogin() {
   if (!auth.isLoggedIn) {
     location.href = '/login'
@@ -124,20 +332,51 @@ function requireLogin() {
   return true
 }
 
+function startReply(target, rootComment) {
+  if (!requireLogin()) return
+  replyTarget.value = {
+    id: target.id,
+    nickname: target.author ? target.author.nickname : '拾光用户'
+  }
+  if (rootComment && !thread(rootComment).expanded) {
+    loadThread(rootComment, null, 1)
+  }
+  nextTick(() => {
+    if (inputEl.value) inputEl.value.focus()
+  })
+}
+
+function cancelReply() {
+  replyTarget.value = null
+}
+
 async function submit() {
   const text = draft.value.trim()
   if (!text || submitting.value) return
   if (!requireLogin()) return
   submitting.value = true
   try {
-    const created = await createComment(props.post.id, text)
-    comments.value.unshift(created)
-    props.post.commentCount = (props.post.commentCount || 0) + 1
-    draft.value = ''
-    requestAnimationFrame(() => {
-      const el = listEl.value
-      if (el) el.scrollTop = 0
-    })
+    if (replyTarget.value) {
+      const created = await createReply(replyTarget.value.id, text)
+      const rootComment = comments.value.find((x) => x.id === created.rootId)
+      if (rootComment) {
+        await loadThread(rootComment, created.id, 5)
+        rootComment.replyCount = (rootComment.replyCount || 0) + 1
+      }
+      props.post.commentCount = (props.post.commentCount || 0) + 1
+      draft.value = ''
+      replyTarget.value = null
+    } else {
+      const created = await createComment(props.post.id, text)
+      comments.value.unshift(created)
+      ensureThread(created.id)
+      props.post.commentCount = (props.post.commentCount || 0) + 1
+      draft.value = ''
+      requestAnimationFrame(() => {
+        const el = listEl.value
+        if (el) el.scrollTop = 0
+      })
+    }
   } catch (e) {
     // 错误提示已由拦截器处理
   } finally {
@@ -161,21 +400,42 @@ async function toggleLike(c) {
   }
 }
 
-async function remove(c) {
+async function confirmDelete(message) {
   try {
-    await ElMessageBox.confirm('确定删除这条评论吗？', '删除评论', {
+    await ElMessageBox.confirm(message, '删除评论', {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning'
     })
+    return true
   } catch (e) {
-    return
+    return false
   }
+}
+
+async function removeTop(c) {
+  const extra = c.replyCount > 0 ? '该评论下的 ' + c.replyCount + ' 条回复会一并删除。' : ''
+  if (!(await confirmDelete('确定删除这条评论吗？' + extra))) return
   try {
     await deleteComment(c.id)
     comments.value = comments.value.filter((x) => x.id !== c.id)
-    props.post.commentCount = Math.max(0, (props.post.commentCount || 0) - 1)
+    delete threads[c.id]
+    props.post.commentCount = Math.max(0, (props.post.commentCount || 0) - 1 - (c.replyCount || 0))
     ElMessage.success('评论已删除')
+  } catch (e) {
+    // 错误提示已由拦截器处理
+  }
+}
+
+async function removeReply(r, rootComment) {
+  if (!(await confirmDelete('确定删除这条回复吗？'))) return
+  try {
+    await deleteComment(r.id)
+    const st = ensureThread(rootComment.id)
+    st.items = st.items.filter((x) => x.id !== r.id)
+    rootComment.replyCount = Math.max(0, (rootComment.replyCount || 0) - 1)
+    props.post.commentCount = Math.max(0, (props.post.commentCount || 0) - 1)
+    ElMessage.success('回复已删除')
   } catch (e) {
     // 错误提示已由拦截器处理
   }
@@ -190,15 +450,21 @@ function onKeydown(e) {
 }
 
 onMounted(() => {
-  loadFirst()
+  loadFirst().then(focusTarget)
   window.addEventListener('keydown', onKeydown)
   document.body.style.overflow = 'hidden'
 })
 
 onBeforeUnmount(() => {
+  if (flashTimer) clearTimeout(flashTimer)
   window.removeEventListener('keydown', onKeydown)
   document.body.style.overflow = ''
 })
+
+function isPostAuthor(c) {
+  const postAuthorId = props.post.author && props.post.author.id
+  return postAuthorId != null && c.userId === postAuthorId
+}
 
 function formatCount(n) {
   if (n == null) return '0'
@@ -351,14 +617,51 @@ function onAvatarError(c) {
   color: rgba(128, 128, 128, 0.9);
 }
 
+.cp-state-sm {
+  padding: 14px 0;
+}
+
 .cp-panel-pc .cp-state {
   color: rgba(255, 255, 255, 0.5);
+}
+
+.cp-thread + .cp-thread {
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.cp-panel-pc .cp-thread + .cp-thread {
+  border-top-color: rgba(255, 255, 255, 0.06);
 }
 
 .cp-item {
   display: flex;
   gap: 10px;
   padding: 10px 0;
+}
+
+.cp-item-sub {
+  padding: 8px 0;
+}
+
+.cp-flash {
+  padding-left: 8px;
+  padding-right: 8px;
+  margin-left: -8px;
+  margin-right: -8px;
+  border-radius: 10px;
+  animation: cpFlash 2s ease-out;
+}
+
+@keyframes cpFlash {
+  0% {
+    background: rgba(255, 92, 92, 0.26);
+  }
+  60% {
+    background: rgba(255, 92, 92, 0.16);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 .cp-avatar {
@@ -370,6 +673,11 @@ function onAvatarError(c) {
   background: #f0e9e0;
 }
 
+.cp-avatar-sm {
+  width: 28px;
+  height: 28px;
+}
+
 .cp-main {
   flex: 1;
   min-width: 0;
@@ -378,7 +686,7 @@ function onAvatarError(c) {
 .cp-meta {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 3px;
 }
 
@@ -390,6 +698,16 @@ function onAvatarError(c) {
 
 .cp-panel-pc .cp-name {
   color: rgba(255, 255, 255, 0.55);
+}
+
+.cp-badge {
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: var(--sg-primary-soft, rgba(255, 92, 92, 0.14));
+  color: var(--sg-primary-deep, #e04f5f);
+  flex-shrink: 0;
 }
 
 .cp-time {
@@ -404,14 +722,81 @@ function onAvatarError(c) {
   white-space: pre-wrap;
 }
 
-.cp-del {
+.cp-item-sub .cp-content {
+  font-size: 14px;
+}
+
+.cp-at {
+  color: var(--sg-primary-deep, #e04f5f);
+}
+
+.cp-panel-pc .cp-at {
+  color: #ff8a8a;
+}
+
+.cp-actions {
+  display: flex;
+  gap: 14px;
   margin-top: 4px;
+}
+
+.cp-act {
   font-size: 12px;
+  color: rgba(128, 128, 128, 0.9);
+  transition: color 0.2s;
+}
+
+.cp-act:hover {
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.cp-panel-pc .cp-act:hover {
+  color: #fff;
+}
+
+.cp-act-del:hover {
+  color: #e04f5f;
+}
+
+.cp-expand,
+.cp-collapse {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sg-primary-deep, #e04f5f);
+  padding: 4px 0 8px 46px;
+}
+
+.cp-panel-pc .cp-expand,
+.cp-panel-pc .cp-collapse {
+  color: #ff8a8a;
+}
+
+.cp-expand:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cp-collapse {
   color: rgba(128, 128, 128, 0.9);
 }
 
-.cp-del:hover {
-  color: #e04f5f;
+.cp-panel-pc .cp-collapse {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cp-replies {
+  padding-left: 46px;
+  border-left: 2px solid rgba(0, 0, 0, 0.05);
+  margin-left: 18px;
+  margin-bottom: 6px;
+}
+
+.cp-panel-pc .cp-replies {
+  border-left-color: rgba(255, 255, 255, 0.08);
+}
+
+.cp-expand-sub {
+  padding-left: 0;
 }
 
 .cp-like {
@@ -426,14 +811,18 @@ function onAvatarError(c) {
   min-width: 44px;
 }
 
+.cp-item-sub .cp-like {
+  min-width: 38px;
+}
+
 .cp-like.is-liked {
   color: #ff4757;
 }
 
 .cp-foot {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   flex-shrink: 0;
@@ -441,6 +830,45 @@ function onAvatarError(c) {
 
 .cp-panel-pc .cp-foot {
   border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.cp-reply-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.05);
+  font-size: 12px;
+}
+
+.cp-panel-pc .cp-reply-hint {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cp-reply-hint-text {
+  color: rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-panel-pc .cp-reply-hint-text {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cp-reply-cancel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sg-primary-deep, #e04f5f);
+  flex-shrink: 0;
+}
+
+.cp-foot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .cp-input {

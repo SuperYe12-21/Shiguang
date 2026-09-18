@@ -51,6 +51,19 @@ public class InteractionController {
         return R.ok();
     }
 
+    @GetMapping("/comments/{id}/replies")
+    public R<PageVO<CommentVO>> replies(@PathVariable Long id,
+                                        @RequestParam(required = false) Long cursor,
+                                        @RequestParam(defaultValue = "10") int limit) {
+        return R.ok(commentService.listReplies(id, cursor, limit, SecurityUtils.getUserId()));
+    }
+
+    @PostMapping("/comments/{id}/replies")
+    public R<CommentVO> createReply(@PathVariable Long id,
+                                    @Valid @RequestBody CreateCommentRequest request) {
+        return R.ok(commentService.createReply(id, SecurityUtils.getUserId(), request.getContent()));
+    }
+
     @PostMapping("/comments/{id}/like")
     public R<LikeVO> likeComment(@PathVariable Long id) {
         return R.ok(likeService.likeComment(id, SecurityUtils.getUserId()));
