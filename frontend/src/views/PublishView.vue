@@ -102,6 +102,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { presignUpload, createPost, fetchPostDetail } from '../api/posts'
 import { useFeedStore } from '../stores/feed'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const feed = useFeedStore()
@@ -167,6 +168,18 @@ function goBack() {
   } else {
     router.push('/feed')
   }
+}
+
+/** 发布成功后：进入自己主页的作品流，默认停在刚发布的作品上（用 replace，返回不会再回到发布页） */
+async function openMyNewPost(postId) {
+  const auth = useAuthStore()
+  await auth.ensureUser()
+  const uid = auth.userId
+  if (!postId || !uid) {
+    router.replace('/feed')
+    return
+  }
+  router.replace({ path: '/feed', query: { postId, userId: uid, from: 'publish' } })
 }
 
 function pickVideo() {
@@ -326,7 +339,7 @@ async function submit() {
     }
     feed.reset()
     ElMessage.success('发布成功')
-    router.push('/feed')
+    await openMyNewPost(post && post.id)
   } catch (err) {
     // 错误提示已由拦截器处理
   } finally {
@@ -350,7 +363,7 @@ function waitVideoReady(postId) {
           processing.value = false
           feed.reset()
           ElMessage.success('视频转码完成，已发布')
-          router.push('/feed')
+          await openMyNewPost(postId)
           resolve()
         } else if (detail && detail.status === 'FAILED') {
           clearTimer()

@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -43,5 +44,17 @@ public class PostController {
     public R<Void> delete(@PathVariable Long id) {
         postService.delete(id, SecurityUtils.getUserId());
         return R.ok();
+    }
+
+    /** 编辑文案（标题 / 简介），仅作者 */
+    @PutMapping("/{id}")
+    public R<PostVO> update(@PathVariable Long id, @Valid @RequestBody UpdatePostRequest request) {
+        return R.ok(postService.updateText(id, request, SecurityUtils.getUserId()));
+    }
+
+    /** 切换可见性（PUBLIC / PRIVATE），仅作者 */
+    @PutMapping("/{id}/visibility")
+    public R<PostVO> updateVisibility(@PathVariable Long id, @Valid @RequestBody UpdateVisibilityRequest request) {
+        return R.ok(postService.setVisibility(id, request.getVisibility(), SecurityUtils.getUserId()));
     }
 }

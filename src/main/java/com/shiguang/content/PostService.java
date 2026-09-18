@@ -38,6 +38,7 @@ public class PostService {
         post.setTitle(trimToNull(request.getTitle()));
         post.setDescription(trimToNull(request.getDescription()));
         post.setCoverObject(trimToNull(request.getCoverObject()));
+        post.setVisibility(PostVisibility.PUBLIC);
         post.setLikeCount(0);
         post.setCommentCount(0);
 
@@ -71,6 +72,9 @@ public class PostService {
 
     public PostVO getDetail(Long id, Long viewerId) {
         Post post = requirePost(id);
+        if (post.getVisibility() == PostVisibility.PRIVATE && !post.getUserId().equals(viewerId)) {
+            throw new BizException(404, "作品不存在或已删除");
+        }
         PostVO vo = toVO(post);
         vo.setLiked(viewerId != null && likeService.isPostLiked(id, viewerId));
         vo.setLikeCount(Math.max(0, post.getLikeCount() + likeService.postPendingDelta(id)));
@@ -83,15 +87,33 @@ public class PostService {
 
     @Transactional
     public void delete(Long id, Long userId) {
-        Post post = requirePost(id);
-        if (!post.getUserId().equals(userId)) {
-            throw new BizException(403, "只能删除自己的作品");
-        }
+        Post post = requireOwnPost(id, userId, "只能删除自己的作品");
         deleteObjects(post);
         postMapper.deleteById(id);
         likeService.cleanupPost(id);
         commentService.cleanupPost(id);
         eventPublisher.publishEvent(new PostDeletedEvent(id));
+    }
+
+    /** 编辑文案：只改标题和简介 */
+    @Transactional
+    public PostVO updateText(Long id, UpdatePostRequest request, Long userId) {
+        Post post = requireOwnPost(id, userId, "只能编辑自己的作品");
+        post.setTitle(trimToNull(request.getTitle()));
+        post.setDescription(trimToNull(request.getDescription()));
+        postMapper.updateById(post);
+        eventPublisher.publishEvent(new PostUpdatedEvent(id));
+        return toVO(post);
+    }
+
+    /** 切换可见性：PUBLIC / PRIVATE（仅自己可见） */
+    @Transactional
+    public PostVO setVisibility(Long id, String visibility, Long userId) {
+        Post post = requireOwnPost(id, userId, "只能设置自己作品的可见性");
+        post.setVisibility(parseVisibility(visibility));
+        postMapper.updateById(post);
+        eventPublisher.publishEvent(new PostUpdatedEvent(id));
+        return toVO(post);
     }
 
     public void markPublished(Long postId, String videoObject, String coverObject) {
@@ -127,6 +149,14 @@ public class PostService {
         return post;
     }
 
+    private Post requireOwnPost(Long id, Long userId, String message) {
+        Post post = requirePost(id);
+        if (!post.getUserId().equals(userId)) {
+            throw new BizException(403, message);
+        }
+        return post;
+    }
+
     public PostVO toVO(Post post) {
         User author = userService.getById(post.getUserId());
         PostVO.PostVOBuilder builder = PostVO.builder()
@@ -135,6 +165,7 @@ public class PostService {
                 .title(post.getTitle())
                 .description(post.getDescription())
                 .status(post.getStatus())
+                .visibility(post.getVisibility())
                 .likeCount(post.getLikeCount())
                 .commentCount(post.getCommentCount())
                 .failReason(post.getFailReason())
@@ -164,6 +195,14 @@ public class PostService {
             return PostType.valueOf(type.trim().toUpperCase(Locale.ROOT));
         } catch (Exception e) {
             throw new BizException("不支持的发布类型: " + type);
+        }
+    }
+
+    private static PostVisibility parseVisibility(String visibility) {
+        try {
+            return PostVisibility.valueOf(visibility.trim().toUpperCase(Locale.ROOT));
+        } catch (Exception e) {
+            throw new BizException("可见性参数非法: " + visibility);
         }
     }
 

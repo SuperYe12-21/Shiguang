@@ -40,6 +40,9 @@ public class Post {
 
     private PostStatus status;
 
+    /** 可见性：PUBLIC / PRIVATE（仅自己可见） */
+    private PostVisibility visibility;
+
     private String failReason;
 
     private Integer likeCount;

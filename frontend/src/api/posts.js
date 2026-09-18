@@ -12,3 +12,11 @@ export const presignUpload = (type, contentType, extension) =>
   http.post('/upload/presign', { type, contentType, extension })
 
 export const createPost = (payload) => http.post('/posts', payload)
+
+export const markPostSeen = (id) => http.post(`/feed/seen/${id}`)
+
+export const setPostVisibility = (id, visibility) => http.put(`/posts/${id}/visibility`, { visibility })
+
+export const updatePost = (id, payload) => http.put(`/posts/${id}`, payload)
+
+export const deletePost = (id) => http.delete(`/posts/${id}`)

@@ -20,6 +20,8 @@ public class PostVO {
 
     private PostStatus status;
 
+    private PostVisibility visibility;
+
     private String videoUrl;
 
     private String coverUrl;

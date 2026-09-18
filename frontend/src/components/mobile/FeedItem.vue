@@ -109,6 +109,16 @@
         </span>
         <span class="rail-count">分享</span>
       </button>
+
+      <!-- 自己的作品：作品管理入口 -->
+      <button v-if="isMine" class="rail-btn" @click="$emit('more')">
+        <span class="rail-icon">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+            <path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+          </svg>
+        </span>
+        <span class="rail-count">更多</span>
+      </button>
     </div>
 
     <div v-if="post.type === 'VIDEO' && !videoFailed && active && !playing && !barDragging && !resumeActive" class="play-mask-m" @click="togglePlay">
@@ -128,6 +138,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useAuthStore } from '../../stores/auth'
+import { createWatchTimer } from '../../composables/useSeenReport'
 
 const props = defineProps({
   post: { type: Object, required: true },
@@ -136,10 +147,11 @@ const props = defineProps({
   resumeFrame: { type: String, default: '' }
 })
 
-const emit = defineEmits(['like', 'comment', 'share', 'follow', 'author', 'progress'])
+const emit = defineEmits(['like', 'comment', 'share', 'follow', 'author', 'progress', 'more'])
 
 const auth = useAuthStore()
 const isMine = ref(false)
+const seenTimer = createWatchTimer(() => (auth.isLoggedIn ? props.post?.id : null))
 watch(
   [() => auth.userId, () => props.post?.author?.id],
   () => {
@@ -281,6 +293,7 @@ function onMeta() {
 
 function onPlay() {
   playing.value = true
+  seenTimer.start()
   resumeActive.value = false
   if (resumeMaskTimer) {
     clearTimeout(resumeMaskTimer)
@@ -299,6 +312,7 @@ function onTime() {
 
 function onPause() {
   playing.value = false
+  seenTimer.stop()
   const v = videoEl.value
   if (v && props.active && typeof v.currentTime === 'number') {
     emit('progress', v.currentTime)
@@ -400,6 +414,10 @@ const fallbackAvatar = computed(() => {
 watch(
   () => props.active,
   (active) => {
+    if (props.post?.type !== 'VIDEO') {
+      if (active) seenTimer.start()
+      else seenTimer.stop()
+    }
     const v = videoEl.value
     if (!v) return
     if (active) {
@@ -421,6 +439,7 @@ watch(videoEl, (v) => {
 })
 
 onBeforeUnmount(() => {
+  seenTimer.stop()
   if (retryTimer) clearTimeout(retryTimer)
   if (soundTipTimer) clearTimeout(soundTipTimer)
   const v = videoEl.value
