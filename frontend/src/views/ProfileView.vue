@@ -40,6 +40,7 @@
                 <div class="pc-actions">
                   <template v-if="isMe">
                     <button class="pc-btn pc-btn-ghost" @click="router.push('/settings')">账号设置</button>
+                    <button class="pc-btn pc-btn-ghost" @click="router.push('/history')">观看历史</button>
                     <button class="pc-btn pc-btn-ghost" @click="shareProfile">分享主页</button>
                     <button class="pc-btn pc-btn-primary" @click="openEdit">编辑资料</button>
                   </template>
@@ -89,7 +90,10 @@
                   <span v-if="p.type === 'IMAGE' && (p.images || []).length > 1" class="pc-ov-tag pc-ov-multi">
                     <svg viewBox="0 0 24 24" width="11" height="11" fill="#fff"><path d="M4 5h16v2H4V5zm0 6h16v2H4v-2zm0 6h10v2H4v-2z"/></svg>
                   </span>
-                  <span class="pc-ov-tag pc-ov-like"><svg viewBox="0 0 24 24" width="10" height="10" fill="#fff"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>{{ formatCount(p.likeCount) }}</span>
+                  <span class="pc-ov-stats">
+                    <span v-if="p.type === 'VIDEO'" class="pc-ov-tag pc-ov-view"><svg viewBox="0 0 24 24" width="11" height="11" fill="#fff"><path d="M8 5v14l11-7z"/></svg>{{ formatCount(p.viewCount) }}</span>
+                    <span class="pc-ov-tag pc-ov-like"><svg viewBox="0 0 24 24" width="10" height="10" fill="#fff"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>{{ formatCount(p.likeCount) }}</span>
+                  </span>
                 </span>
                 <span v-if="p.visibility === 'PRIVATE'" class="pc-cell-lock" title="仅自己可见">
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="#fff"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 12c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
@@ -189,9 +193,15 @@
             <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           </span>
           <span v-else-if="(p.images || []).length > 1" class="pf-cell-mark pf-cell-multi">{{ p.images.length }}</span>
-          <span class="pf-cell-like">
-            <svg viewBox="0 0 24 24" width="9" height="9" fill="#ff5c5c"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-            {{ formatCount(p.likeCount) }}
+          <span class="pf-cell-stats">
+            <span v-if="p.type === 'VIDEO'" class="pf-cell-like pf-cell-view">
+              <svg viewBox="0 0 24 24" width="9" height="9" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
+              {{ formatCount(p.viewCount) }}
+            </span>
+            <span class="pf-cell-like">
+              <svg viewBox="0 0 24 24" width="9" height="9" fill="#ff5c5c"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              {{ formatCount(p.likeCount) }}
+            </span>
           </span>
           <span v-if="p.visibility === 'PRIVATE'" class="pf-cell-lock" title="仅自己可见">
             <svg viewBox="0 0 24 24" width="11" height="11" fill="#fff"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 12c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
@@ -262,6 +272,11 @@
           <div v-if="isMe" class="pf-drawer-item" @click="onDrawerEdit">
             <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></span>
             <span>编辑资料</span>
+            <span class="pf-drawer-arr"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span>
+          </div>
+          <div v-if="isMe" class="pf-drawer-item" @click="onDrawerHistory">
+            <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg></span>
+            <span>观看历史</span>
             <span class="pf-drawer-arr"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span>
           </div>
           <div v-else class="pf-drawer-item" @click="onDrawerRemark">
@@ -702,6 +717,11 @@ function onDrawerSettings() {
   router.push('/settings')
 }
 
+function onDrawerHistory() {
+  closeDrawer()
+  router.push('/history')
+}
+
 function loadRemark(userId) {
   try {
     remark.value = localStorage.getItem(`sg-remark-${userId}`) || ''
@@ -1134,10 +1154,16 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
-.pf-cell-like {
+.pf-cell-stats {
   position: absolute;
   left: 8px;
   bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pf-cell-like {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -1656,10 +1682,10 @@ onBeforeUnmount(() => {
   }
 
   /* 仅自己可见角标 */
-  .pf-cell-lock {
+.pf-cell-lock {
     position: absolute;
-    left: 8px;
-    bottom: 8px;
+    right: 8px;
+    top: 8px;
     width: 20px;
     height: 20px;
     border-radius: 6px;
@@ -2081,6 +2107,12 @@ onBeforeUnmount(() => {
   color: #fff;
   font-size: 12px;
   font-weight: 600;
+}
+
+.pc-ov-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .pc-ov-play,

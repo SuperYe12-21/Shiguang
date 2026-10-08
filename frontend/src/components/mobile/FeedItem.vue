@@ -1,5 +1,5 @@
 <template>
-  <section class="feed-item" :class="{ 'bar-dragging': barDragging }">
+  <section ref="itemEl" class="feed-item" :class="{ 'bar-dragging': barDragging }">
     <video
       v-if="post.type === 'VIDEO'"
       ref="videoEl"
@@ -14,8 +14,8 @@
       x5-playsinline
       x5-video-player-type="h5"
       controlslist="nodownload noplaybackrate noremoteplayback"
-      :preload="active ? 'auto' : 'metadata'"
-      @click="togglePlay"
+      :preload="active || warm ? 'auto' : 'metadata'"
+      @click="onVideoTap"
       @play="onPlay"
       @pause="onPause"
       @loadeddata="onLoadedData"
@@ -25,7 +25,7 @@
       @error="videoFailed = true"
     />
     <div v-else class="feed-image">
-      <div v-if="!imgFailed" class="img-swiper" @touchstart.passive="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd">
+      <div v-if="!imgFailed" class="img-swiper" @click="onImageTap" @touchstart.passive="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd">
         <div class="img-track" :style="{ transform: 'translateX(-' + imgIndex * 100 + '%)' }">
           <img v-for="(img, i) in postImages" :key="i" :src="img" :alt="post.title || '作品'" draggable="false" @error="imgFailed = true" />
         </div>
@@ -72,6 +72,10 @@
       </div>
       <p class="title">{{ post.title || '分享美好瞬间' }}</p>
       <p v-if="post.description" class="desc">{{ post.description }}</p>
+      <p class="view-line" data-role="view-count">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 4C7.03 4 2.73 6.94 1 11c1.73 4.06 6.03 7 11 7s9.27-2.94 11-7c-1.73-4.06-6.03-7-11-7zm0 12c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+        {{ formatCount(post.viewCount) }} {{ post.type === 'IMAGE' ? '次浏览' : '次播放' }}
+      </p>
     </div>
 
     <!-- 右侧互动栏 -->
@@ -143,6 +147,13 @@
       <span>视频加载失败</span>
     </div>
 
+    <!-- 双击点赞爱心 -->
+    <div class="heart-layer">
+      <span v-for="h in hearts" :key="h.id" class="heart-pop" :style="{ left: h.x + 'px', top: h.y + 'px' }">
+        <svg viewBox="0 0 24 24" width="76" height="76" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
+      </span>
+    </div>
+
     
   </section>
 </template>
@@ -155,6 +166,7 @@ import { createWatchTimer } from '../../composables/useSeenReport'
 const props = defineProps({
   post: { type: Object, required: true },
   active: { type: Boolean, default: false },
+  warm: { type: Boolean, default: false },
   initSeek: { type: Number, default: 0 },
   resumeFrame: { type: String, default: '' }
 })
@@ -173,6 +185,11 @@ watch(
 )
 
 const videoEl = ref(null)
+const itemEl = ref(null)
+const hearts = ref([])
+let heartSeq = 0
+let tapTimer = null
+let lastTapAt = 0
 const muted = ref(false)
 const playing = ref(false)
 const soundBlocked = ref(false)
@@ -453,6 +470,10 @@ watch(videoEl, (v) => {
 onBeforeUnmount(() => {
   seenTimer.stop()
   if (retryTimer) clearTimeout(retryTimer)
+  if (tapTimer) {
+    clearTimeout(tapTimer)
+    tapTimer = null
+  }
   if (soundTipTimer) clearTimeout(soundTipTimer)
   const v = videoEl.value
   if (v) {
@@ -504,6 +525,56 @@ function onLoadedData() {
   if (props.active && v.paused && !seekPending) {
     tryPlay(v)
   }
+}
+
+// 双击点赞：单击暂停/播放（延迟判定），双击冒爱心并点赞（已赞只出动画，不取消）
+function onVideoTap(e) {
+  const now = Date.now()
+  if (now - lastTapAt < 260) {
+    lastTapAt = 0
+    if (tapTimer) {
+      clearTimeout(tapTimer)
+      tapTimer = null
+    }
+    triggerDoubleLike(e)
+    return
+  }
+  lastTapAt = now
+  if (tapTimer) clearTimeout(tapTimer)
+  tapTimer = setTimeout(() => {
+    tapTimer = null
+    togglePlay()
+  }, 260)
+}
+
+// 图文卡片：单击无操作，双击点赞
+function onImageTap(e) {
+  const now = Date.now()
+  if (now - lastTapAt < 260) {
+    lastTapAt = 0
+    triggerDoubleLike(e)
+  } else {
+    lastTapAt = now
+  }
+}
+
+function triggerDoubleLike(e) {
+  spawnHeart(e)
+  if (!props.post.liked) emit('like')
+}
+
+function spawnHeart(e) {
+  const el = itemEl.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const x = e && typeof e.clientX === 'number' && e.clientX ? e.clientX - rect.left : rect.width / 2
+  const y = e && typeof e.clientY === 'number' && e.clientY ? e.clientY - rect.top : rect.height / 2
+  const id = ++heartSeq
+  hearts.value.push({ id, x, y })
+  if (hearts.value.length > 6) hearts.value.shift()
+  setTimeout(() => {
+    hearts.value = hearts.value.filter((h) => h.id !== id)
+  }, 760)
 }
 
 function togglePlay() {
@@ -735,6 +806,15 @@ section.feed-item.item-compact .resume-frame {
   overflow: hidden;
 }
 
+.view-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.72;
+}
+
 /* 右侧互动栏 */
 .action-rail {
   position: absolute;
@@ -953,6 +1033,37 @@ section.feed-item.item-compact .resume-frame {
 /* 拖动时隐藏底部文案，聚焦进度提示 */
 .feed-item.bar-dragging .feed-meta {
   opacity: 0;
+}
+
+/* 双击点赞爱心层 */
+.heart-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 40;
+}
+
+.heart-pop {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  color: #ff4d6d;
+  filter: drop-shadow(0 4px 14px rgba(255, 77, 109, 0.5));
+  animation: heart-burst 0.76s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes heart-burst {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-10deg); }
+  22% { opacity: 1; transform: translate(-50%, -50%) scale(1.2) rotate(5deg); }
+  45% { opacity: 1; transform: translate(-50%, -60%) scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: translate(-50%, -118%) scale(0.94) rotate(0deg); }
+}
+
+.feed-video,
+.img-swiper {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* 评论打开时视频压缩为顶部小窗，进度条一并隐藏 */

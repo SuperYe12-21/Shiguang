@@ -1,17 +1,21 @@
 import { defineStore } from 'pinia'
 import { fetchUnread } from '../api/notifications'
+import { fetchFriendsUnread, markFriendsSeen } from '../api/friends'
 
 const POLL_INTERVAL = 30000
 
 export const useNotificationStore = defineStore('notification', {
   state: () => ({
     unread: { total: 0, like: 0, comment: 0, follow: 0 },
+    /** 朋友页红点：有比上次查看更新的好友作品 */
+    friendsUnread: false,
     timer: null,
     listening: false
   }),
   actions: {
     async refresh() {
       if (!localStorage.getItem('sg_token')) return
+      this.refreshFriendsUnread()
       try {
         const data = await fetchUnread()
         this.unread = {
@@ -23,6 +27,24 @@ export const useNotificationStore = defineStore('notification', {
       } catch (e) {
         // 轮询失败静默，等下一次
       }
+    },
+    async refreshFriendsUnread() {
+      try {
+        const data = await fetchFriendsUnread()
+        this.friendsUnread = !!data?.unread
+      } catch (e) {
+        // 静默，等下一次
+      }
+    },
+    /** 进入朋友页 / 朋友动态后清红点：把"上次查看的好友最新作品"写回后端 */
+    async clearFriendsDot() {
+      if (!this.friendsUnread) return
+      try {
+        await markFriendsSeen()
+      } catch (e) {
+        return
+      }
+      this.friendsUnread = false
     },
     /** 本地先行递减，避免标记已读后红点还要等一轮轮询 */
     clear(category) {
@@ -54,6 +76,7 @@ export const useNotificationStore = defineStore('notification', {
         this.listening = false
       }
       this.unread = { total: 0, like: 0, comment: 0, follow: 0 }
+      this.friendsUnread = false
     }
   }
 })

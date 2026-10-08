@@ -1,7 +1,7 @@
 <template>
   <div class="feed-page" :class="{ 'is-pc': isPc, 'has-comment': !!commentPost }">
     <!-- 移动端：全屏竖屏流 + 底部导航 -->
-    <div v-if="feed.mode === 'user' || feed.mode === 'likes' || isSingle" class="m-back-bar">
+    <div v-if="feed.mode === 'user' || feed.mode === 'likes' || feed.mode === 'friends' || isSingle" class="m-back-bar">
       <button class="m-back-btn" @click="onBack">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
         返回
@@ -9,7 +9,18 @@
       <span class="m-back-title">{{ scopeLabel }}</span>
     </div>
     <template v-if="!isPc">
-      <main ref="scrollEl" class="m-scroll" :class="{ booting: !feedReady }" @scroll.passive="onScroll">
+      <button v-if="feed.mode === 'home' && !isSingle" class="m-search-fab" aria-label="搜索" @click="router.push('/search')">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+      </button>
+      <main
+        ref="scrollEl"
+        class="m-scroll"
+        :class="{ booting: !feedReady }"
+        @scroll.passive="onScroll"
+        @touchstart.passive="onTouchStart"
+        @touchend="onTouchEnd"
+        @touchcancel="onTouchEnd"
+      >
         <template v-if="feed.loading">
           <div v-for="i in 3" :key="i" class="m-skeleton"></div>
         </template>
@@ -21,6 +32,7 @@
             :ref="(el) => setCardRef(i, el)"
             :post="post"
             :active="feedReady && i === currentIndex"
+            :warm="feedReady && warmIndexes.includes(i)"
             :init-seek="seekInitFor(post)"
             :resume-frame="resumeFrameFor(post)"
             :class="{ 'item-compact': commentPost && i === currentIndex }"
@@ -47,7 +59,7 @@
           <p>{{ emptyText }}</p>
         </div>
       </main>
-      <BottomNav @home="goHome" @me="goMe" />
+      <BottomNav :active="feed.mode === 'friends' ? 'friends' : 'home'" @home="goHome" @me="goMe" />
     </template>
 
     <!-- PC：抖音式一屏一卡，滚轮翻页 -->
@@ -72,6 +84,7 @@
               :ref="(el) => setCardRef(i, el)"
               :post="post"
               :active="feedReady && i === currentIndex"
+              :warm="feedReady && warmIndexes.includes(i)"
               :init-seek="seekInitFor(post)"
               :resume-frame="resumeFrameFor(post)"
               :class="{ 'item-compact': !!commentPost }"
@@ -109,7 +122,12 @@
       <!-- 顶部迷你导航 -->
       <nav class="p-topbar">
         <span class="p-logo">拾光</span>
-        <button class="p-nav-btn on" @click="goHome">首页</button>
+        <button class="p-nav-btn" :class="{ on: pcActive === 'home' }" @click="goHome">首页</button>
+        <button class="p-nav-btn" :class="{ on: pcActive === 'friends' }" @click="goFriends">
+          朋友
+          <span v-if="notification.friendsUnread" class="p-dot"></span>
+        </button>
+        <button class="p-nav-btn" @click="router.push('/search')">搜<span class="p-glyph-tall">索</span></button>
         <button class="p-nav-btn" @click="router.push('/publish')">发布</button>
         <button class="p-nav-btn" @click="goMessages">
           消息
@@ -185,16 +203,32 @@ function setCardRef(i, el) {
 }
 
 const isPc = computed(() => window.innerWidth >= 768)
+// PC 顶栏高亮：朋友动态流归"朋友"，其余（首页/他人主页/点赞/单作品）都归"首页"
+const pcActive = computed(() => (route.name === 'friends-feed' ? 'friends' : 'home'))
 
 /** 单作品页（/post/:id）：只放一条，不支持上下滑 */
 const isSingle = computed(() => feed.mode === 'single')
 
 const currentPost = computed(() => feed.posts[currentIndex.value] || null)
 
+// 预加载策略：预热当前位置之后最近的两张视频卡（跳过图文卡片）
+const warmIndexes = computed(() => {
+  const result = []
+  let count = 0
+  for (let i = currentIndex.value + 1; i < feed.posts.length && count < 2; i++) {
+    if (feed.posts[i].type === 'VIDEO') {
+      result.push(i)
+      count++
+    }
+  }
+  return result
+})
+
 const emptyText = computed(() => {
   if (feed.mode === 'single') return '作品不存在或已删除'
   if (feed.mode === 'user') return '该用户还没有发布作品'
   if (feed.mode === 'likes') return '还没有点赞的作品'
+  if (feed.mode === 'friends') return '好友还没有发布作品'
   return '还没有作品，去发布第一条拾光吧'
 })
 const activeVideoTime = ref(0)
@@ -218,11 +252,12 @@ function resumeFrameFor(post) {
 
 // 首页流位置记忆：进入个人主页前记住当前作品，返回首页后恢复（避免总从第一条开始）
 const HOME_RESUME_KEY = 'sg_home_resume'
+const FRIENDS_RESUME_KEY = 'sg_friends_resume'
 
-function saveHomeResume(postId, time, frame, index) {
+function saveHomeResume(postId, time, frame, index, key = HOME_RESUME_KEY) {
   try {
     sessionStorage.setItem(
-      HOME_RESUME_KEY,
+      key,
       JSON.stringify({
         postId,
         time: Math.max(0, Math.round((time || 0) * 10) / 10),
@@ -235,10 +270,10 @@ function saveHomeResume(postId, time, frame, index) {
   }
 }
 
-function takeHomeResume() {
+function takeHomeResume(key = HOME_RESUME_KEY) {
   try {
-    const raw = sessionStorage.getItem(HOME_RESUME_KEY)
-    sessionStorage.removeItem(HOME_RESUME_KEY)
+    const raw = sessionStorage.getItem(key)
+    sessionStorage.removeItem(key)
     if (!raw) return null
     try {
       const parsed = JSON.parse(raw)
@@ -261,8 +296,13 @@ function takeHomeResume() {
 }
 
 onBeforeRouteLeave((to) => {
-  // 离开首页去任何页面（个人主页、发布页、设置等）都记住当前位置，返回时回到原处
-  if (feed.mode === 'home' && to.path !== '/feed') {
+  // 离开首页/朋友动态去任何页面（个人主页、发布页、设置等）都记住当前位置，返回时回到原处
+  const resumeKey = feed.mode === 'home'
+    ? (to.path !== '/feed' ? HOME_RESUME_KEY : '')
+    : feed.mode === 'friends'
+      ? (to.path !== '/friends/feed' ? FRIENDS_RESUME_KEY : '')
+      : ''
+  if (resumeKey) {
     const post = currentPost.value
     if (post) {
       let frame = ''
@@ -270,7 +310,7 @@ onBeforeRouteLeave((to) => {
         const card = cardEls[currentIndex.value]
         frame = (card && typeof card.captureFrame === 'function' ? card.captureFrame() : '') || ''
       }
-      saveHomeResume(post.id, post.type === 'VIDEO' ? activeVideoTime.value : 0, frame, currentIndex.value)
+      saveHomeResume(post.id, post.type === 'VIDEO' ? activeVideoTime.value : 0, frame, currentIndex.value, resumeKey)
     }
   }
   resumeSeek.value = null
@@ -285,6 +325,7 @@ const scopeLabel = computed(() => {
     const mine = !!auth.userId && feed.scopeUserId === auth.userId
     return (mine ? '我的' : (likesOwnerName.value ? likesOwnerName.value + ' 的' : 'Ta 的')) + '点赞'
   }
+  if (feed.mode === 'friends') return '朋友动态'
   if (feed.mode !== 'user') return ''
   const nick = feed.posts[0]?.author?.nickname || ''
   const isMe = !!auth.userId && feed.scopeUserId === auth.userId
@@ -395,6 +436,15 @@ function onBack() {
     router.replace('/notifications')
     return
   }
+  if (feed.mode === 'friends') {
+    const state = window.history.state
+    if (state && state.back) {
+      router.back()
+      return
+    }
+    router.replace('/friends')
+    return
+  }
   backToProfile()
 }
 
@@ -405,6 +455,8 @@ function retryFeed() {
     feed.loadLikesFirstPage(feed.scopeUserId)
   } else if (feed.mode === 'user') {
     feed.loadUserFirstPage(feed.scopeUserId)
+  } else if (feed.mode === 'friends') {
+    feed.loadFriendsFirstPage()
   } else {
     feed.loadFirstPage()
   }
@@ -435,6 +487,29 @@ async function loadFeedForQuery() {
   const postId = Number(route.query.postId || '')
   const userId = Number(route.query.userId || '')
   const likesOf = Number(route.query.likesOf || '')
+
+  // 朋友动态：只含互关好友的作品，按好友发布时间倒序，和首页一样竖屏滑动
+  if (route.name === 'friends-feed') {
+    if (feed.mode !== 'friends') {
+      feed.reset()
+      await feed.loadFriendsFirstPage()
+    } else if (!feed.posts.length && !feed.loading) {
+      await feed.loadFriendsFirstPage()
+    }
+    // 从个人主页返回时回到刚才那条，不是从第一条重新开始
+    const resume = takeHomeResume(FRIENDS_RESUME_KEY)
+    if (postId) {
+      await locatePost(postId)
+    } else if (resume && resume.postId) {
+      if (resume.time > 0) {
+        resumeSeek.value = { postId: resume.postId, time: resume.time, frame: resume.frame || '' }
+      }
+      await locatePost(resume.postId, resume.index)
+    }
+    // 直接打开朋友动态（刷新/外链）也要把红点清掉；先刷新一次避免与开机轮询抢时序
+    notification.refreshFriendsUnread().then(() => notification.clearFriendsDot())
+    return
+  }
 
   // 点赞列表入口：进入该用户的点赞列表流并定位到对应作品
   if (likesOf) {
@@ -505,6 +580,15 @@ onMounted(async () => {
 
   keydownHandler = (e) => {
     if (!isPc.value) return
+    if (e.key === ' ' || e.code === 'Space') {
+      const el = e.target
+      const tag = el && el.tagName ? el.tagName.toLowerCase() : ''
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || (el && el.isContentEditable)) return
+      e.preventDefault()
+      const card = cardEls[currentIndex.value]
+      if (card && typeof card.togglePlay === 'function') card.togglePlay()
+      return
+    }
     if (e.key === 'ArrowDown' || e.key === 'PageDown') {
       e.preventDefault()
       goNext()
@@ -531,6 +615,7 @@ onBeforeUnmount(() => {
   if (resizeHandler) window.removeEventListener('resize', resizeHandler)
   if (keydownHandler) window.removeEventListener('keydown', keydownHandler)
   if (wheelTimer) clearTimeout(wheelTimer)
+  if (snapTimer) clearTimeout(snapTimer)
   window.visualViewport?.removeEventListener('resize', window.__syncSgVh)
   window.visualViewport?.removeEventListener('scroll', window.__syncSgVh)
   delete window.__syncSgVh
@@ -550,6 +635,73 @@ function onScroll() {
   currentIndex.value = Math.min(Math.max(index, 0), feed.posts.length - 1)
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 600) {
     feed.loadMore()
+  }
+  if (snapPending) scheduleTouchSnap()
+}
+
+// —— 触摸吸附兜底：部分手机浏览器（尤其内置浏览器）对 CSS scroll-snap 支持不佳，
+// 一滑就划过好几条。这里在滚动停止后补一次吸附，保证每次滑动都停在一条上；
+// 原生吸附正常的浏览器里位置本就对齐，直接跳过，不会产生副作用 ——
+let touchActive = false
+let snapPending = false
+let snapTimer = null
+let touchStartIndex = 0
+let snapTargetIndex = null
+let snapTargetAt = 0
+
+function onTouchStart() {
+  const el = scrollEl.value
+  if (!el || isPc.value) return
+  touchActive = true
+  if (snapTargetIndex != null && Date.now() - snapTargetAt < 900) {
+    // 上一次补吸附还在动画中：以它的目标位置为基准，连续快滑不会被吞掉一步
+    touchStartIndex = snapTargetIndex
+  } else {
+    touchStartIndex = Math.round(el.scrollTop / Math.max(el.clientHeight, 1))
+  }
+  snapTargetIndex = null
+}
+
+function onTouchEnd() {
+  if (isPc.value) return
+  touchActive = false
+  snapPending = true
+  scheduleTouchSnap()
+}
+
+function scheduleTouchSnap() {
+  if (snapTimer) clearTimeout(snapTimer)
+  snapTimer = setTimeout(runTouchSnap, 180)
+}
+
+function runTouchSnap() {
+  snapTimer = null
+  const el = scrollEl.value
+  if (!el || isPc.value || touchActive || !snapPending) return
+  if (commentPost.value || !feedReady.value) return
+  snapPending = false
+  const h = Math.max(el.clientHeight, 1)
+  const current = el.scrollTop / h
+  const delta = current - touchStartIndex
+  const abs = Math.abs(delta)
+  let target = Math.round(current)
+  if (abs < 0.15) {
+    // 轻微位移：回弹到原卡片
+    target = touchStartIndex
+  } else if (abs <= 1.6) {
+    // 常规滑动：正好前进/后退一条
+    target = touchStartIndex + Math.sign(delta)
+  }
+  const max = Math.max(feed.posts.length - 1, 0)
+  target = Math.min(Math.max(target, 0), max)
+  const top = target * h
+  if (Math.abs(el.scrollTop - top) < 4) return
+  snapTargetIndex = target
+  snapTargetAt = Date.now()
+  if ('scrollBehavior' in document.documentElement.style) {
+    el.scrollTo({ top, behavior: 'smooth' })
+  } else {
+    el.scrollTop = top
   }
 }
 
@@ -597,10 +749,18 @@ function goMessages() {
   router.push('/messages')
 }
 
+function goFriends() {
+  if (!auth.isLoggedIn) {
+    router.push('/login')
+    return
+  }
+  router.push('/friends')
+}
+
 // 首页按钮：已在首页流时点击 = 刷新回第一屏；在他人作品流/点赞流时先回到首页
 function goHome() {
   closeComment()
-  const scoped = feed.mode === 'user' || feed.mode === 'likes'
+  const scoped = feed.mode === 'user' || feed.mode === 'likes' || feed.mode === 'friends'
   const deepLinked = !!route.query.postId
   if (feed.mode === 'home' && !scoped && !deepLinked) {
     if (!feed.loading) refreshHomeFeed()
@@ -732,11 +892,31 @@ async function onFollow(post) {
   overflow-y: auto;
   scroll-snap-type: y mandatory;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 /* 开机定位阶段：关掉滚动吸附，避免恢复观看位置时被吸附动画带着滑过去 */
 .m-scroll.booting {
   scroll-snap-type: none;
+}
+
+/* 首页右上角搜索浮标 */
+.m-search-fab {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  right: 14px;
+  z-index: 40;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 /* 用户作品流 / 单作品页：返回条 */
@@ -780,6 +960,11 @@ async function onFollow(post) {
 .m-scroll > .m-skeleton {
   /* 跟随滚动容器可视高度，而不是含浏览器地址栏的整屏，避免真机上内容偏下 */
   height: 100%;
+}
+
+/* 甩动时最多只吸附一条，避免一滑划过好几条（支持该属性的浏览器生效） */
+.m-scroll > .feed-item {
+  scroll-snap-stop: always;
 }
 
 /* 评论打开时：锁定滚动，避免压缩当前卡片时跳动 */
@@ -966,6 +1151,7 @@ async function onFollow(post) {
 }
 
 .p-nav-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -974,6 +1160,17 @@ async function onFollow(post) {
   color: rgba(255, 255, 255, 0.75);
   font-size: 13px;
   transition: background 0.2s, color 0.2s;
+}
+
+/* 朋友页红点：好友有新作品（深色胶囊顶栏版本，无白边） */
+.p-dot {
+  position: absolute;
+  top: 4px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff5c5c;
 }
 
 .p-nav-btn:hover {
@@ -985,5 +1182,12 @@ async function onFollow(post) {
   background: rgba(255, 255, 255, 0.16);
   color: #fff;
   font-weight: 600;
+}
+
+/* "索"字形在同字号下比其他字矮约 1.5%，做一点光学补偿 */
+.p-glyph-tall {
+  display: inline-block;
+  transform: scaleY(1.015);
+  transform-origin: center 62%;
 }
 </style>

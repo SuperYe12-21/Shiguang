@@ -5,6 +5,14 @@ export const fetchFeed = (cursor, limit = 10) =>
 
 export const fetchPostDetail = (id) => http.get(`/posts/${id}`)
 
+export const fetchFriendsFeed = (cursor, limit = 12) =>
+  http.get('/feed/friends', { params: { cursor: cursor || '', limit } })
+
+export const fetchHistory = (cursor, limit = 20) =>
+  http.get('/feed/history', { params: { cursor: cursor || '', limit } })
+
+export const clearHistory = () => http.delete('/feed/history')
+
 export const likePost = (id) => http.post(`/posts/${id}/like`)
 
 export const unlikePost = (id) => http.delete(`/posts/${id}/like`)

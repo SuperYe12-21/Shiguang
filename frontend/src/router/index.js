@@ -11,9 +11,15 @@ const routes = [
   { path: '/messages', name: 'messages', component: () => import('../views/MessagesView.vue'), meta: { requiresAuth: true } },
   { path: '/chat/:userId', name: 'chat', component: () => import('../views/ChatView.vue'), meta: { requiresAuth: true } },
   { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue'), meta: { requiresAuth: true } },
+  { path: '/history', name: 'history', component: () => import('../views/HistoryView.vue'), meta: { requiresAuth: true } },
+  { path: '/search', name: 'search', component: () => import('../views/SearchView.vue') },
+  { path: '/friends', name: 'friends', component: () => import('../views/FriendsView.vue'), meta: { requiresAuth: true } },
+  { path: '/friends/feed', name: 'friends-feed', component: () => import('../views/FeedView.vue'), meta: { requiresAuth: true } },
   { path: '/user/:id', name: 'user', component: () => import('../views/ProfileView.vue') },
   { path: '/user/:id/followers', name: 'user-followers', component: () => import('../views/FollowListView.vue') },
   { path: '/user/:id/following', name: 'user-following', component: () => import('../views/FollowListView.vue') }
+  ,
+  { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('../views/NotFoundView.vue') }
 ]
 
 const router = createRouter({

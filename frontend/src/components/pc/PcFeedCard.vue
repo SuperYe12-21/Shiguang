@@ -1,5 +1,5 @@
 <template>
-  <article class="pc-slide" :class="{ 'bar-dragging': barDragging }">
+  <article ref="cardEl" class="pc-slide" :class="{ 'bar-dragging': barDragging }">
     <div class="media" @click="onMediaClick">
       <video
         v-if="post.type === 'VIDEO' && !videoFailed"
@@ -15,7 +15,7 @@
         x5-playsinline
         x5-video-player-type="h5"
         controlslist="nodownload noplaybackrate noremoteplayback"
-        preload="metadata"
+        :preload="active || warm ? 'auto' : 'metadata'"
         @loadedmetadata="onMeta"
         @durationchange="onMeta"
         @loadeddata="onLoadedData"
@@ -109,6 +109,10 @@
       <p class="title">{{ post.title || '分享美好瞬间' }}</p>
       <p v-if="post.description" class="desc">{{ post.description }}</p>
       <span class="tag">{{ post.type === 'VIDEO' ? '短视频' : '图文' }} · {{ formatDate(post.createdAt) }}</span>
+      <span class="view-line" data-role="view-count">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 4C7.03 4 2.73 6.94 1 11c1.73 4.06 6.03 7 11 7s9.27-2.94 11-7c-1.73-4.06-6.03-7-11-7zm0 12c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+        <b>{{ formatCount(post.viewCount) }}</b> {{ post.type === 'IMAGE' ? '次浏览' : '次播放' }}
+      </span>
     </div>
 
     <!-- 右侧互动栏 -->
@@ -139,6 +143,13 @@
       </button>
     </div>
 
+    <!-- 双击点赞爱心 -->
+    <div class="heart-layer">
+      <span v-for="h in hearts" :key="h.id" class="heart-pop" :style="{ left: h.x + 'px', top: h.y + 'px' }">
+        <svg viewBox="0 0 24 24" width="76" height="76" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
+      </span>
+    </div>
+
     <Teleport to="body">
       <div v-if="lightboxOpen" class="sg-lightbox" @click.self="closeLightbox">
         <div class="lb-stage" @click="closeLightbox" :style="{ transform: 'translateX(-' + lightboxIndex * 100 + '%)' }">
@@ -161,6 +172,7 @@ import { createWatchTimer } from '../../composables/useSeenReport'
 const props = defineProps({
   post: { type: Object, required: true },
   active: { type: Boolean, default: false },
+  warm: { type: Boolean, default: false },
   initSeek: { type: Number, default: 0 },
   resumeFrame: { type: String, default: '' }
 })
@@ -179,6 +191,11 @@ watch(
 )
 
 const videoEl = ref(null)
+const cardEl = ref(null)
+const hearts = ref([])
+let heartSeq = 0
+let tapTimer = null
+let lastTapAt = 0
 const playing = ref(false)
 const imgFailed = ref(false)
 const videoFailed = ref(false)
@@ -275,7 +292,7 @@ function captureFrame() {
   }
 }
 
-defineExpose({ captureFrame })
+defineExpose({ captureFrame, togglePlay, playing })
 
 function applyResumeSeek(v) {
   if (!seekPending || !props.active || !v) return
@@ -483,11 +500,54 @@ function togglePlay() {
   playing.value = !v.paused
 }
 
-function onMediaClick() {
+// 双击点赞：单击暂停/播放（延迟判定），双击冒爱心并点赞（已赞只出动画，不取消）
+function onMediaClick(e) {
   if (props.post.type === 'VIDEO') {
-    togglePlay()
+    const now = Date.now()
+    if (now - lastTapAt < 260) {
+      lastTapAt = 0
+      if (tapTimer) {
+        clearTimeout(tapTimer)
+        tapTimer = null
+      }
+      triggerDoubleLike(e)
+      return
+    }
+    lastTapAt = now
+    if (tapTimer) clearTimeout(tapTimer)
+    tapTimer = setTimeout(() => {
+      tapTimer = null
+      togglePlay()
+    }, 260)
+    return
   }
-  // 图文：不再点击放大，使用右下角“查看大图”
+  // 图文：单击无操作，双击点赞（不再点击放大）
+  const now = Date.now()
+  if (now - lastTapAt < 260) {
+    lastTapAt = 0
+    triggerDoubleLike(e)
+  } else {
+    lastTapAt = now
+  }
+}
+
+function triggerDoubleLike(e) {
+  spawnHeart(e)
+  if (!props.post.liked) emit('like')
+}
+
+function spawnHeart(e) {
+  const el = cardEl.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const x = e && typeof e.clientX === 'number' && e.clientX ? e.clientX - rect.left : rect.width / 2
+  const y = e && typeof e.clientY === 'number' && e.clientY ? e.clientY - rect.top : rect.height / 2
+  const id = ++heartSeq
+  hearts.value.push({ id, x, y })
+  if (hearts.value.length > 6) hearts.value.shift()
+  setTimeout(() => {
+    hearts.value = hearts.value.filter((h) => h.id !== id)
+  }, 760)
 }
 
 function openLightbox() {
@@ -513,6 +573,10 @@ function closeLightbox() {
 
 onBeforeUnmount(() => {
   seenTimer.stop()
+  if (tapTimer) {
+    clearTimeout(tapTimer)
+    tapTimer = null
+  }
   const v = videoEl.value
   if (v) {
     v.pause()
@@ -571,6 +635,31 @@ onBeforeUnmount(() => {
   height: 100%;
   overflow: hidden;
   background: #0b0b0e;
+}
+
+/* 双击点赞爱心层 */
+.heart-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 40;
+}
+
+.heart-pop {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  color: #ff4d6d;
+  filter: drop-shadow(0 4px 14px rgba(255, 77, 109, 0.5));
+  animation: heart-burst 0.76s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes heart-burst {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-10deg); }
+  22% { opacity: 1; transform: translate(-50%, -50%) scale(1.2) rotate(5deg); }
+  45% { opacity: 1; transform: translate(-50%, -60%) scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: translate(-50%, -118%) scale(0.94) rotate(0deg); }
 }
 
 /* 评论打开时：隐藏右侧互动栏，只保留媒体与左下文案 */
@@ -858,6 +947,21 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.72);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.view-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.view-line b {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.94);
 }
 
 .rail {

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { fetchFeed, fetchPostDetail, favoritePost, likePost, unfavoritePost, unlikePost } from '../api/posts'
+import { fetchFeed, fetchFriendsFeed, fetchPostDetail, favoritePost, likePost, unfavoritePost, unlikePost } from '../api/posts'
 import { fetchUserLikes, fetchUserPosts } from '../api/user'
 import { useAuthStore } from './auth'
 
@@ -63,6 +63,26 @@ export const useFeedStore = defineStore('feed', {
         this.loading = false
       }
     },
+    /** 朋友动态：只含互关好友的作品，按好友发布时间倒序 */
+    async loadFriendsFirstPage() {
+      this.mode = 'friends'
+      this.scopeUserId = null
+      this.loading = true
+      this.error = ''
+      this.posts = []
+      this.nextCursor = null
+      this.hasMore = true
+      try {
+        const data = await fetchFriendsFeed('', 10)
+        this.posts = data.items || []
+        this.nextCursor = data.nextCursor || null
+        this.hasMore = !!data.hasMore
+      } catch (e) {
+        this.error = e.message || '加载失败'
+      } finally {
+        this.loading = false
+      }
+    },
     /** 单作品页：只放这一条，不含分页（通知跳转用） */
     async loadSingle(postId) {
       this.mode = 'single'
@@ -91,7 +111,9 @@ export const useFeedStore = defineStore('feed', {
           ? await fetchUserPosts(this.scopeUserId, this.nextCursor, 12)
           : this.mode === 'likes'
             ? await fetchUserLikes(this.scopeUserId, this.nextCursor, 12)
-            : await fetchFeed(this.nextCursor, 10)
+            : this.mode === 'friends'
+              ? await fetchFriendsFeed(this.nextCursor, 10)
+              : await fetchFeed(this.nextCursor, 10)
         const items = data.items || []
         if (rotation) {
           // 轮换重播阶段允许同一条作品再次出现
