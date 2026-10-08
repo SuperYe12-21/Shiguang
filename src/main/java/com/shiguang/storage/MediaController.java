@@ -24,6 +24,9 @@ public class MediaController {
 
     private static final Pattern RANGE_PATTERN = Pattern.compile("^bytes=(\\d*)-(\\d*)$", Pattern.CASE_INSENSITIVE);
 
+    /** 对象名带随机 UUID，内容永不变，可长期缓存；避免回看时重复下载 */
+    private static final String MEDIA_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
     private final StorageService storageService;
 
     @RequestMapping(value = "/{*objectName}", method = {RequestMethod.GET, RequestMethod.HEAD})
@@ -59,6 +62,7 @@ public class MediaController {
         }
         response.setHeader("Accept-Ranges", "bytes");
         response.setContentType(resolveContentType(objectName, stat.contentType()));
+        response.setHeader("Cache-Control", MEDIA_CACHE_CONTROL);
 
         long start = 0;
         long end = size - 1;
