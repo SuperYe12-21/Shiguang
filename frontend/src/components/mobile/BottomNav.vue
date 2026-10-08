@@ -23,7 +23,7 @@
       <span>发布</span>
     </button>
 
-    <button class="nav-item" :class="{ active: active === 'message' }" @click="go('/notifications')">
+    <button class="nav-item" :class="{ active: active === 'message' }" @click="go('/messages')">
       <span class="nav-ico">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
           <path d="M12 3C6.48 3 2 6.8 2 11.5c0 2.3 1.1 4.4 2.9 5.9-.1 1.5-.7 3.1-1.9 4.3 1.9-.2 3.6-1 5-2.1.9.2 1.9.4 2.9.4 5.52 0 10-3.8 10-8.5S17.52 3 12 3z" />
@@ -31,7 +31,7 @@
           <circle cx="12" cy="11.5" r="1.4" fill="#fff" />
           <circle cx="15.5" cy="11.5" r="1.4" fill="#fff" />
         </svg>
-        <UnreadBadge :count="notification.unread.total" variant="float" />
+        <UnreadBadge :count="unreadTotal" variant="float" />
       </span>
       <span>消息</span>
     </button>
@@ -47,12 +47,17 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
+import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import UnreadBadge from '../UnreadBadge.vue'
 import { useNotificationStore } from '../../stores/notification'
+import { useMessageStore } from '../../stores/message'
 
 const router = useRouter()
 const notification = useNotificationStore()
+const message = useMessageStore()
+// 消息入口同时承载通知与私信，红点合并计算
+const unreadTotal = computed(() => notification.unread.total + message.unread)
 const emit = defineEmits(['me', 'home'])
 const props = defineProps({
   active: { type: String, default: 'home' }
