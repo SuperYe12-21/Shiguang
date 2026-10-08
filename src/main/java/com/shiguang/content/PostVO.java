@@ -34,6 +34,10 @@ public class PostVO {
 
     private Boolean liked;
 
+    private Boolean favorited;
+
+    private Long favoriteCount;
+
     private String failReason;
 
     private Author author;

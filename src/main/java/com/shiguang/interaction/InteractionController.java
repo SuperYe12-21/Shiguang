@@ -42,7 +42,7 @@ public class InteractionController {
     @PostMapping("/posts/{id}/comments")
     public R<CommentVO> createComment(@PathVariable Long id,
                                       @Valid @RequestBody CreateCommentRequest request) {
-        return R.ok(commentService.create(id, SecurityUtils.getUserId(), request.getContent()));
+        return R.ok(commentService.create(id, SecurityUtils.getUserId(), request.getContent(), request.getImages()));
     }
 
     @DeleteMapping("/comments/{id}")
@@ -61,7 +61,7 @@ public class InteractionController {
     @PostMapping("/comments/{id}/replies")
     public R<CommentVO> createReply(@PathVariable Long id,
                                     @Valid @RequestBody CreateCommentRequest request) {
-        return R.ok(commentService.createReply(id, SecurityUtils.getUserId(), request.getContent()));
+        return R.ok(commentService.createReply(id, SecurityUtils.getUserId(), request.getContent(), request.getImages()));
     }
 
     @PostMapping("/comments/{id}/like")

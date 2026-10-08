@@ -36,6 +36,8 @@ public class CommentService {
 
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 50;
+    private static final int MAX_IMAGES = 3;
+    private static final int MAX_OBJECT_NAME = 200;
 
     private final CommentMapper commentMapper;
     private final CommentLikeMapper commentLikeMapper;
@@ -83,13 +85,18 @@ public class CommentService {
     }
 
     @Transactional
-    public CommentVO create(Long postId, Long userId, String content) {
+    public CommentVO create(Long postId, Long userId, String content, List<String> images) {
         Post post = likeService.requireAccessiblePost(postId, userId);
-        String trimmed = requireContent(content, "评论内容不能为空");
+        String trimmed = normalizeContent(content);
+        List<String> objects = normalizeImages(images);
+        if (trimmed.isEmpty() && objects.isEmpty()) {
+            throw new BizException(1, "评论内容不能为空");
+        }
         Comment comment = new Comment();
         comment.setPostId(postId);
         comment.setUserId(userId);
         comment.setContent(trimmed);
+        comment.setImagesObject(objects.isEmpty() ? null : objects);
         comment.setLikeCount(0);
         comment.setCreatedAt(LocalDateTime.now());
         commentMapper.insert(comment);
@@ -105,10 +112,14 @@ public class CommentService {
 
     /** 回复评论：被回复的对象可以是顶层评论，也可以是某条回复；结果始终挂在同一个楼层下 */
     @Transactional
-    public CommentVO createReply(Long commentId, Long userId, String content) {
+    public CommentVO createReply(Long commentId, Long userId, String content, List<String> images) {
         Comment parent = requireComment(commentId);
         Post post = likeService.requireAccessiblePost(parent.getPostId(), userId);
-        String trimmed = requireContent(content, "回复内容不能为空");
+        String trimmed = normalizeContent(content);
+        List<String> objects = normalizeImages(images);
+        if (trimmed.isEmpty() && objects.isEmpty()) {
+            throw new BizException(1, "回复内容不能为空");
+        }
 
         Comment reply = new Comment();
         reply.setPostId(parent.getPostId());
@@ -117,6 +128,7 @@ public class CommentService {
         reply.setReplyToUserId(parent.getUserId());
         reply.setUserId(userId);
         reply.setContent(trimmed);
+        reply.setImagesObject(objects.isEmpty() ? null : objects);
         reply.setLikeCount(0);
         reply.setCreatedAt(LocalDateTime.now());
         commentMapper.insert(reply);
@@ -264,6 +276,7 @@ public class CommentService {
                         && (viewerId.equals(comment.getUserId()) || viewerId.equals(postAuthorId)))
                 .userId(comment.getUserId())
                 .content(comment.getContent())
+                .images(toImageUrls(comment.getImagesObject()))
                 .likeCount(Math.max(0, comment.getLikeCount() + pendingDelta))
                 .liked(liked)
                 .mine(viewerId != null && viewerId.equals(comment.getUserId()))
@@ -280,12 +293,33 @@ public class CommentService {
         return comment;
     }
 
-    private static String requireContent(String content, String message) {
+    private static String normalizeContent(String content) {
         String trimmed = content == null ? "" : content.trim();
-        if (trimmed.isEmpty()) {
-            throw new BizException(message);
+        if (trimmed.length() > 1000) {
+            throw new BizException(1, "评论最长 1000 字");
         }
         return trimmed;
+    }
+
+    /** 图片对象名去重 + 数量/长度校验 */
+    private static List<String> normalizeImages(List<String> images) {
+        if (images == null || images.isEmpty()) {
+            return List.of();
+        }
+        List<String> objects = images.stream()
+                .filter(name -> name != null && !name.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (objects.size() > MAX_IMAGES) {
+            throw new BizException(1, "评论最多 " + MAX_IMAGES + " 张图片");
+        }
+        for (String object : objects) {
+            if (object.length() > MAX_OBJECT_NAME) {
+                throw new BizException(1, "图片对象名非法");
+            }
+        }
+        return objects;
     }
 
     private static Object pickIgnoreCase(Map<String, Object> row, String key) {
@@ -307,6 +341,13 @@ public class CommentService {
             return avatarUrl;
         }
         return storageService.presignedGetUrl(avatarUrl);
+    }
+
+    private List<String> toImageUrls(List<String> objects) {
+        if (objects == null || objects.isEmpty()) {
+            return List.of();
+        }
+        return objects.stream().map(storageService::presignedGetUrl).toList();
     }
 
     private static int normalizeLimit(int limit) {

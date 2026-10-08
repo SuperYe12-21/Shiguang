@@ -28,4 +28,10 @@ public class UserProfileVO {
     private Long likeCount;
 
     private Boolean followedByMe;
+
+    /** 对方是否也关注了我（互关判定，用于「互相关注」文案） */
+    private Boolean matched;
+
+    /** 当前访客能看哪几项列表（点赞 / 收藏 / 粉丝 / 关注） */
+    private UserPrivacyVO.Access viewerCanSee;
 }

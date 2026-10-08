@@ -131,7 +131,25 @@ public class FollowService {
         return FollowVO.builder()
                 .following(isFollowing(viewerId, targetUserId))
                 .followerCount(followerCount(targetUserId))
+                .matched(isFollowing(targetUserId, viewerId))
                 .build();
+    }
+
+    /** 批量查询这些用户里哪些关注了 viewerId（互关判定用） */
+    public Map<Long, Boolean> matchedMap(Long viewerId, Collection<Long> otherIds) {
+        if (viewerId == null || otherIds == null || otherIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> distinct = otherIds.stream().distinct().toList();
+        Set<Long> matched = followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                        .eq(Follow::getFolloweeId, viewerId)
+                        .in(Follow::getFollowerId, distinct))
+                .stream().map(Follow::getFollowerId).collect(Collectors.toSet());
+        Map<Long, Boolean> result = new HashMap<>();
+        for (Long id : distinct) {
+            result.put(id, matched.contains(id));
+        }
+        return result;
     }
 
     private PageVO<UserPublicVO> toUserPage(List<Follow> rows, Function<Follow, Long> userIdExtractor,
@@ -145,25 +163,28 @@ public class FollowService {
             Map<Long, User> users = userMapper.selectBatchIds(userIds).stream()
                     .collect(Collectors.toMap(User::getId, Function.identity()));
             Map<Long, Boolean> following = followingMap(viewerId, userIds);
+            Map<Long, Boolean> matched = matchedMap(viewerId, userIds);
             items = page.stream()
                     .map(userIdExtractor)
                     .map(users::get)
                     .filter(java.util.Objects::nonNull)
-                    .map(u -> toPublicVO(u, following.getOrDefault(u.getId(), false)))
+                    .map(u -> toPublicVO(u, following.getOrDefault(u.getId(), false),
+                            matched.getOrDefault(u.getId(), false)))
                     .toList();
             nextCursor = hasMore ? page.get(page.size() - 1).getId().toString() : null;
         }
         return PageVO.<UserPublicVO>builder().items(items).nextCursor(nextCursor).hasMore(hasMore).build();
     }
 
-    private UserPublicVO toPublicVO(User user, Boolean followedByMe) {
+    private UserPublicVO toPublicVO(User user, Boolean followedByMe, Boolean matched) {
         return new UserPublicVO(
                 user.getId(),
                 user.getNickname(),
                 toAvatarUrl(user.getAvatarUrl()),
                 user.getBio(),
                 user.getCreatedAt(),
-                followedByMe);
+                followedByMe,
+                matched);
     }
 
     private String toAvatarUrl(String avatarUrl) {

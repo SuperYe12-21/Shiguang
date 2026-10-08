@@ -32,6 +32,12 @@
             </svg>
             <span>分享</span>
           </button>
+          <button class="panel-btn" :class="{ favorited: post.favorited }" @click="$emit('favorite')">
+            <svg viewBox="0 0 24 24" width="20" height="20" :fill="post.favorited ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
+              <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
+            </svg>
+            <span>{{ formatCount(post.favoriteCount) }}</span>
+          </button>
         </div>
 
         <div class="panel-divider"></div>
@@ -64,7 +70,7 @@ const props = defineProps({
   posts: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['like', 'comment', 'share', 'select'])
+const emit = defineEmits(['like', 'comment', 'favorite', 'share', 'select'])
 
 const author = computed(() => props.post.author || {})
 
@@ -188,6 +194,11 @@ function formatDate(t) {
 .panel-btn.liked {
   color: var(--sg-primary-deep);
   background: var(--sg-primary-soft);
+}
+
+.panel-btn.favorited {
+  color: #b57d00;
+  background: rgba(255, 197, 61, 0.18);
 }
 
 .panel-divider {

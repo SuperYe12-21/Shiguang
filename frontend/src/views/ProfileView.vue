@@ -13,10 +13,10 @@
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
             <span>发布</span>
           </button>
-          <button class="pc-side-btn" @click="router.push('/notifications')">
+          <button class="pc-side-btn" @click="router.push('/messages')">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
             <span>消息</span>
-            <UnreadBadge :count="notification.unread.total" />
+            <UnreadBadge :count="unreadTotal" />
           </button>
           <div class="pc-side-grow"></div>
           <button class="pc-side-btn" :class="{ on: isMe }" @click="goMe">
@@ -39,13 +39,15 @@
                 <span class="pc-uid">拾光号 {{ profile.id }}</span>
                 <div class="pc-actions">
                   <template v-if="isMe">
+                    <button class="pc-btn pc-btn-ghost" @click="router.push('/settings')">账号设置</button>
                     <button class="pc-btn pc-btn-ghost" @click="shareProfile">分享主页</button>
                     <button class="pc-btn pc-btn-primary" @click="openEdit">编辑资料</button>
                   </template>
                   <template v-else>
                     <button class="pc-btn pc-btn-ghost" @click="openRemark">设置备注</button>
                     <button class="pc-btn pc-btn-ghost" @click="shareProfile">分享主页</button>
-                    <button class="pc-btn pc-btn-primary" :class="{ 'pc-btn-on': profile.followedByMe }" @click="toggleFollow">{{ profile.followedByMe ? '已关注' : '+ 关注' }}</button>
+                    <button class="pc-btn pc-btn-ghost" @click="openChat">私信</button>
+                    <button class="pc-btn pc-btn-primary" :class="{ 'pc-btn-on': profile.followedByMe }" @click="toggleFollow">{{ followText }}</button>
                   </template>
                 </div>
               </div>
@@ -54,18 +56,18 @@
               <div class="pc-stats">
                 <div class="pc-stat"><b>{{ profile.postCount ?? 0 }}</b><span>作品</span></div>
                 <div class="pc-stat"><b>{{ formatCount(profile.likeCount) }}</b><span>获赞</span></div>
-                <div class="pc-stat pc-stat-link" @click="goFollowing"><b>{{ formatCount(profile.followingCount) }}</b><span>关注</span></div>
-                <div class="pc-stat pc-stat-link" @click="goFollowers"><b>{{ formatCount(profile.followerCount) }}</b><span>粉丝</span></div>
+                <div class="pc-stat" :class="{ 'pc-stat-link': canSeeFollowing }" @click="goFollowing"><b>{{ formatCount(profile.followingCount) }}</b><span>关注</span></div>
+      <div class="pc-stat" :class="{ 'pc-stat-link': canSeeFollower }" @click="goFollowers"><b>{{ formatCount(profile.followerCount) }}</b><span>粉丝</span></div>
               </div>
             </div>
           </header>
           <nav class="pc-tabs">
-            <div class="pc-tab" :class="{ on: activeTab === 'posts' }" @click="switchTab('posts')">作品</div>
-            <div class="pc-tab" :class="{ on: activeTab === 'likes' }" @click="switchTab('likes')">点赞</div>
-            <div class="pc-tab" :class="{ on: activeTab === 'favorites' }" @click="switchTab('favorites')">收藏</div>
+      <div class="pc-tab" :class="{ on: activeTab === 'posts' }" @click="switchTab('posts')">作品</div>
+      <div v-if="canSeeLike" class="pc-tab" :class="{ on: activeTab === 'likes' }" @click="switchTab('likes')">点赞</div>
+      <div v-if="canSeeFavorite" class="pc-tab" :class="{ on: activeTab === 'favorites' }" @click="switchTab('favorites')">收藏</div>
           </nav>
           <section class="pc-grid-wrap">
-            <div v-if="activeTab === 'favorites'" class="pc-empty">
+            <div v-if="activeTab === 'favorites' && !favorites.length && !favoritesLoading" class="pc-empty">
               <span class="pc-empty-ico"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg></span>
               <p>还没有收藏的作品</p>
             </div>
@@ -95,9 +97,10 @@
               </div>
             </div>
             <div class="pc-more">
-              <span v-if="loadingMore || likesLoading">加载中…</span>
+              <span v-if="loadingMore || likesLoading || favoritesLoading">加载中…</span>
               <span v-else-if="activeTab === 'posts' && posts.length && !hasMore">— 没有更多了 —</span>
               <span v-else-if="activeTab === 'likes' && likes.length && !likesHasMore">— 没有更多了 —</span>
+              <span v-else-if="activeTab === 'favorites' && favorites.length && !favoritesHasMore">— 没有更多了 —</span>
             </div>
           </section>
         </div>
@@ -128,7 +131,7 @@
         <div class="pf-head-side">
           <h2 class="pf-nickname">{{ displayName || '拾光用户' }}<span v-if="remark && !isMe" class="pf-remark-badge">备注</span></h2>
           <button v-if="isMe" class="pf-follow" @click="openEdit">编辑资料</button>
-          <button v-else class="pf-follow" :class="{ 'pf-follow-on': profile.followedByMe }" @click="toggleFollow">{{ profile.followedByMe ? '已关注' : '+ 关注' }}</button>
+          <button v-else class="pf-follow" :class="{ 'pf-follow-on': profile.followedByMe }" @click="toggleFollow">{{ followText }}</button>
         </div>
       </div>
       <p v-if="profile.bio" class="pf-bio">{{ profile.bio }}</p>
@@ -136,8 +139,8 @@
       <div class="pf-stats">
         <div class="pf-stat"><b>{{ profile.postCount ?? 0 }}</b><span>作品</span></div>
         <div class="pf-stat"><b>{{ formatCount(profile.likeCount) }}</b><span>获赞</span></div>
-        <div class="pf-stat pf-stat-link" @click="goFollowing"><b>{{ formatCount(profile.followingCount) }}</b><span>关注</span></div>
-        <div class="pf-stat pf-stat-link" @click="goFollowers"><b>{{ formatCount(profile.followerCount) }}</b><span>粉丝</span></div>
+        <div class="pf-stat" :class="{ 'pf-stat-link': canSeeFollowing }" @click="goFollowing"><b>{{ formatCount(profile.followingCount) }}</b><span>关注</span></div>
+        <div class="pf-stat" :class="{ 'pf-stat-link': canSeeFollower }" @click="goFollowers"><b>{{ formatCount(profile.followerCount) }}</b><span>粉丝</span></div>
       </div>
       <div class="pf-actions">
         <template v-if="isMe">
@@ -145,8 +148,8 @@
           <button class="pf-btn pf-btn-ghost" @click="logout">退出登录</button>
         </template>
         <template v-else>
-          <button v-if="profile.followedByMe" class="pf-btn pf-btn-ghost" @click="toggleFollow">已关注</button>
-          <button v-else class="pf-btn pf-btn-primary" @click="toggleFollow">+ 关注</button>
+          <button class="pf-btn pf-btn-ghost" @click="openChat">私信</button>
+          <button class="pf-btn" :class="profile.followedByMe ? 'pf-btn-ghost' : 'pf-btn-primary'" @click="toggleFollow">{{ followText }}</button>
         </template>
       </div>
     </section>
@@ -156,17 +159,17 @@
       <div class="pf-tab" :class="{ on: activeTab === 'posts' }" @click="switchTab('posts')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h12v2H3v-2z"/></svg>作品<span class="pf-tab-bar" />
       </div>
-      <div class="pf-tab" :class="{ on: activeTab === 'likes' }" @click="switchTab('likes')">
+      <div v-if="canSeeLike" class="pf-tab" :class="{ on: activeTab === 'likes' }" @click="switchTab('likes')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>点赞<span class="pf-tab-bar" />
       </div>
-      <div class="pf-tab" :class="{ on: activeTab === 'favorites' }" @click="switchTab('favorites')">
+      <div v-if="canSeeFavorite" class="pf-tab" :class="{ on: activeTab === 'favorites' }" @click="switchTab('favorites')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>收藏<span class="pf-tab-bar" />
       </div>
     </nav>
 
     <!-- 作品网格 -->
     <section class="pf-grid">
-      <template v-if="activeTab === 'favorites'">
+      <template v-if="activeTab === 'favorites' && !favorites.length && !favoritesLoading">
         <div class="pf-empty-box">
           <span class="pf-empty-ico"><svg viewBox="0 0 24 24"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg></span>
           <p>还没有收藏的作品</p>
@@ -204,6 +207,10 @@
     <div v-else-if="activeTab === 'likes'">
       <div v-if="likesLoading" class="pf-more">加载中…</div>
       <div v-else-if="likes.length && !likesHasMore" class="pf-more">— 没有更多了 —</div>
+    </div>
+    <div v-else-if="activeTab === 'favorites'">
+      <div v-if="favoritesLoading" class="pf-more">加载中…</div>
+      <div v-else-if="favorites.length && !favoritesHasMore" class="pf-more">— 没有更多了 —</div>
     </div>
     </template>
 
@@ -247,6 +254,11 @@
           <button class="pf-drawer-close" aria-label="关闭" @click="closeDrawer">✕</button>
         </div>
         <div class="pf-drawer-body">
+          <div v-if="!isMe" class="pf-drawer-item" @click="onDrawerChat">
+            <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg></span>
+            <span>私信</span>
+            <span class="pf-drawer-arr"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span>
+          </div>
           <div v-if="isMe" class="pf-drawer-item" @click="onDrawerEdit">
             <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></span>
             <span>编辑资料</span>
@@ -304,10 +316,11 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { fetchMe, fetchProfile, fetchUserLikes, fetchUserPosts, updateMe, followUser, unfollowUser } from '../api/user'
+import { fetchMe, fetchProfile, fetchUserFavorites, fetchUserLikes, fetchUserPosts, updateMe, followUser, unfollowUser } from '../api/user'
 import { presignUpload } from '../api/posts'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationStore } from '../stores/notification'
+import { useMessageStore } from '../stores/message'
 import BottomNav from '../components/mobile/BottomNav.vue'
 import UnreadBadge from '../components/UnreadBadge.vue'
 
@@ -315,6 +328,9 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const notification = useNotificationStore()
+const message = useMessageStore()
+// 消息入口同时承载通知与私信，红点合并计算
+const unreadTotal = computed(() => notification.unread.total + message.unread)
 
 const isPc = ref(typeof window !== 'undefined' ? window.innerWidth >= 768 : false)
 function syncIsPc() {
@@ -333,6 +349,10 @@ const likes = ref([])
 const likesLoading = ref(false)
 const likesCursor = ref(null)
 const likesHasMore = ref(true)
+const favorites = ref([])
+const favoritesLoading = ref(false)
+const favoritesCursor = ref(null)
+const favoritesHasMore = ref(true)
 const drawerOpen = ref(false)
 const remarkOpen = ref(false)
 const remarkText = ref('')
@@ -351,7 +371,22 @@ const shareFallbackOpen = ref(false)
 
 const isMe = computed(() => meId.value !== null && meId.value === profile.value.id)
 
-const gridItems = computed(() => (activeTab.value === 'likes' ? likes.value : posts.value))
+const followText = computed(() => {
+  if (!profile.value.followedByMe) return '+ 关注'
+  return profile.value.matched ? '互相关注' : '已关注'
+})
+
+// 四项列表可见性：自己永远可看，他人按隐私设置（缺省公开）
+const canSeeLike = computed(() => isMe.value || (profile.value.viewerCanSee?.like ?? true))
+const canSeeFavorite = computed(() => isMe.value || (profile.value.viewerCanSee?.favorite ?? true))
+const canSeeFollower = computed(() => isMe.value || (profile.value.viewerCanSee?.follower ?? true))
+const canSeeFollowing = computed(() => isMe.value || (profile.value.viewerCanSee?.following ?? true))
+
+const gridItems = computed(() => {
+  if (activeTab.value === 'likes') return likes.value
+  if (activeTab.value === 'favorites') return favorites.value
+  return posts.value
+})
 
 const displayName = computed(() => remark.value || profile.value.nickname || '')
 
@@ -401,6 +436,8 @@ async function loadProfile() {
   try {
     const data = await fetchProfile(profile.value.id)
     profile.value = data
+    if (activeTab.value === 'likes' && !canSeeLike.value) activeTab.value = 'posts'
+    if (activeTab.value === 'favorites' && !canSeeFavorite.value) activeTab.value = 'posts'
   } catch (e) {
     ElMessage.error('加载主页失败')
   } finally {
@@ -432,8 +469,11 @@ async function loadPosts() {
 
 function switchTab(tab) {
   if (activeTab.value === tab) return
+  if (tab === 'likes' && !canSeeLike.value) return
+  if (tab === 'favorites' && !canSeeFavorite.value) return
   activeTab.value = tab
   if (tab === 'likes' && !likes.value.length && !likesLoading.value) loadLikes()
+  if (tab === 'favorites' && !favorites.value.length && !favoritesLoading.value) loadFavorites()
   if (tab === 'posts' && !posts.value.length && !loading.value && !loadingMore.value) loadPosts()
 }
 
@@ -459,6 +499,28 @@ async function loadLikes() {
   }
 }
 
+async function loadFavorites() {
+  if (favoritesLoading.value || !favoritesHasMore.value) return
+  favoritesLoading.value = true
+  try {
+    const data = await fetchUserFavorites(profile.value.id, favoritesCursor.value, 12)
+    const items = data.items || []
+    const seen = new Set(favorites.value.map((p) => p.id))
+    for (const item of items) {
+      if (!seen.has(item.id)) {
+        favorites.value.push(item)
+        seen.add(item.id)
+      }
+    }
+    favoritesCursor.value = data.nextCursor || null
+    favoritesHasMore.value = !!data.hasMore
+  } catch (e) {
+    // 静默，滚动可重试
+  } finally {
+    favoritesLoading.value = false
+  }
+}
+
 async function toggleFollow() {
   if (!auth.isLoggedIn) {
     router.push('/login')
@@ -469,6 +531,7 @@ async function toggleFollow() {
       ? await unfollowUser(profile.value.id)
       : await followUser(profile.value.id)
     profile.value.followedByMe = data.following
+    if (typeof data.matched === 'boolean') profile.value.matched = data.matched
     profile.value.followerCount = (profile.value.followerCount || 0) + (data.following ? 1 : -1)
   } catch (e) {
     // 错误已提示
@@ -486,6 +549,11 @@ function goBack() {
   }
 }
 
+function openChat() {
+  const id = profile.value.id
+  if (id) router.push('/chat/' + id)
+}
+
 function goMe() {
   if (!auth.isLoggedIn) {
     router.push('/login')
@@ -495,10 +563,12 @@ function goMe() {
 }
 
 function goFollowers() {
+  if (!canSeeFollower.value) return
   router.push(`/user/${profile.value.id}/followers`)
 }
 
 function goFollowing() {
+  if (!canSeeFollowing.value) return
   router.push(`/user/${profile.value.id}/following`)
 }
 
@@ -608,6 +678,8 @@ async function saveProfile() {
 
 function logout() {
   auth.logout()
+  message.stop()
+  notification.stop()
   router.replace('/login')
 }
 
@@ -620,9 +692,14 @@ function onDrawerEdit() {
   openEdit()
 }
 
+function onDrawerChat() {
+  closeDrawer()
+  openChat()
+}
+
 function onDrawerSettings() {
   closeDrawer()
-  ElMessage.info('账号设置即将上线')
+  router.push('/settings')
 }
 
 function loadRemark(userId) {
@@ -752,6 +829,7 @@ onMounted(async () => {
   scrollHandler = () => {
     if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 400) {
       if (activeTab.value === 'likes') loadLikes()
+      else if (activeTab.value === 'favorites') loadFavorites()
       else loadPosts()
     }
   }

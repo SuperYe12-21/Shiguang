@@ -14,6 +14,12 @@
 
     <main class="fl-list">
       <div v-if="loading && !items.length" class="fl-state">加载中…</div>
+      <div v-else-if="locked" class="fl-state fl-locked">
+        <span class="fl-lock-ico">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M12 1a5 5 0 0 0-5 5v3H5.5A1.5 1.5 0 0 0 4 10.5v11A1.5 1.5 0 0 0 5.5 23h13a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 18.5 9H17V6a5 5 0 0 0-5-5zm3 8H9V6a3 3 0 1 1 6 0v3z"/></svg>
+        </span>
+        <p>{{ lockText }}</p>
+      </div>
       <div v-else-if="!items.length" class="fl-state">{{ isFollowers ? '还没有粉丝' : '还没有关注任何人' }}</div>
 
       <div v-for="u in items" :key="u.id" class="fl-item" @click="goUser(u)">
@@ -30,10 +36,10 @@
           class="fl-btn"
           :class="{ on: u.followedByMe }"
           @click.stop="toggleFollow(u)"
-        >{{ u.followedByMe ? '已关注' : '+ 关注' }}</button>
+        >{{ u.followedByMe ? (u.matched ? '互相关注' : '已关注') : '+ 关注' }}</button>
       </div>
 
-      <div class="fl-more">
+      <div v-if="!locked" class="fl-more">
         <span v-if="loadingMore">加载中…</span>
         <span v-else-if="items.length && !hasMore">— 没有更多了 —</span>
       </div>
@@ -63,6 +69,8 @@ const cursor = ref(null)
 const hasMore = ref(true)
 const loading = ref(false)
 const loadingMore = ref(false)
+const locked = ref(false)
+const lockText = ref('')
 let scrollHandler = null
 
 function fallbackAvatar(u) {
@@ -76,17 +84,23 @@ function fallbackAvatar(u) {
 async function loadFirst() {
   loading.value = true
   try {
-    const [profile, data] = await Promise.all([
-      fetchProfile(targetId),
-      isFollowers ? fetchUserFollowers(targetId, '', 20) : fetchUserFollowing(targetId, '', 20)
-    ])
+    const profile = await fetchProfile(targetId)
     ownerName.value = profile.nickname || '拾光用户'
     totalCount.value = isFollowers ? (profile.followerCount ?? 0) : (profile.followingCount ?? 0)
+    const data = isFollowers
+      ? await fetchUserFollowers(targetId, '', 20)
+      : await fetchUserFollowing(targetId, '', 20)
     items.value = data.items || []
     cursor.value = data.nextCursor || null
     hasMore.value = !!data.hasMore
   } catch (e) {
-    // 错误已提示
+    if (e?.response?.data?.code === 403) {
+      // 对方设置了可见性：展示居中提示，不再当作错误
+      locked.value = true
+      lockText.value = e.response.data.message || `TA 的${isFollowers ? '粉丝' : '关注'}列表暂不可见`
+      hasMore.value = false
+    }
+    // 其余错误已由拦截器提示
   } finally {
     loading.value = false
   }
@@ -123,6 +137,7 @@ async function toggleFollow(u) {
   try {
     const data = u.followedByMe ? await unfollowUser(u.id) : await followUser(u.id)
     u.followedByMe = data.following
+    if (typeof data.matched === 'boolean') u.matched = data.matched
   } catch (e) {
     // 错误已提示
   }
@@ -374,6 +389,30 @@ onBeforeUnmount(() => {
   text-align: center;
   color: var(--text-2);
   font-size: 14px;
+}
+
+.fl-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 110px 0;
+}
+
+.fl-locked p {
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.fl-lock-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 92, 92, 0.1);
+  color: #ff5c5c;
 }
 
 .fl-more {

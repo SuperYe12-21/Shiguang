@@ -10,4 +10,7 @@ public class FollowVO {
     private Boolean following;
 
     private Long followerCount;
+
+    /** 对方是否也关注了我 */
+    private Boolean matched;
 }

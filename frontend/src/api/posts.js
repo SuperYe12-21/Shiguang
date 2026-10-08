@@ -8,6 +8,10 @@ export const fetchPostDetail = (id) => http.get(`/posts/${id}`)
 export const likePost = (id) => http.post(`/posts/${id}/like`)
 
 export const unlikePost = (id) => http.delete(`/posts/${id}/like`)
+
+export const favoritePost = (id) => http.post(`/posts/${id}/favorite`)
+
+export const unfavoritePost = (id) => http.delete(`/posts/${id}/favorite`)
 export const presignUpload = (type, contentType, extension) =>
   http.post('/upload/presign', { type, contentType, extension })
 

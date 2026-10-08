@@ -12,8 +12,14 @@ export const fetchUserPosts = (userId, cursor, limit) => http.get(`/user/${userI
 
 export const fetchUserLikes = (userId, cursor, limit) => http.get(`/user/${userId}/likes`, { params: { cursor: cursor || '', limit: limit || 12 } })
 
+export const fetchUserFavorites = (userId, cursor, limit) => http.get(`/user/${userId}/favorites`, { params: { cursor: cursor || '', limit: limit || 12 } })
+
 export const fetchUserFollowers = (userId, cursor, limit) => http.get(`/user/${userId}/followers`, { params: { cursor: cursor || '', limit: limit || 20 } })
 
 export const fetchUserFollowing = (userId, cursor, limit) => http.get(`/user/${userId}/following`, { params: { cursor: cursor || '', limit: limit || 20 } })
 
 export const updateMe = (payload) => http.put('/user/me', payload)
+
+export const fetchPrivacy = () => http.get('/user/privacy')
+
+export const updatePrivacy = (payload) => http.put('/user/privacy', payload)

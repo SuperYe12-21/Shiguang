@@ -27,6 +27,17 @@
                   <span class="cp-time">{{ formatTime(c.createdAt) }}</span>
                 </div>
                 <p class="cp-content">{{ c.content }}</p>
+                <div v-if="(c.images || []).length" class="cp-imgs" :class="{ 'cp-imgs-1': c.images.length === 1 }">
+                  <img
+                    v-for="(img, i) in c.images"
+                    :key="i"
+                    class="cp-img"
+                    :src="img"
+                    alt="评论图片"
+                    loading="lazy"
+                    @click="openViewer(c.images, i)"
+                  />
+                </div>
                 <div class="cp-actions">
                   <button class="cp-act" @click="startReply(c, null)">回复</button>
                   <button v-if="c.canDelete" class="cp-act cp-act-del" @click="removeTop(c)">删除</button>
@@ -62,6 +73,17 @@
                   <p class="cp-content">
                     <span v-if="r.replyToUser" class="cp-at">回复 @{{ r.replyToUser.nickname }}：</span>{{ r.content }}
                   </p>
+                  <div v-if="(r.images || []).length" class="cp-imgs" :class="{ 'cp-imgs-1': r.images.length === 1 }">
+                    <img
+                      v-for="(img, i) in r.images"
+                      :key="i"
+                      class="cp-img"
+                      :src="img"
+                      alt="评论图片"
+                      loading="lazy"
+                      @click="openViewer(r.images, i)"
+                    />
+                  </div>
                   <div class="cp-actions">
                     <button class="cp-act" @click="startReply(r, c)">回复</button>
                     <button v-if="r.canDelete" class="cp-act cp-act-del" @click="removeReply(r, c)">删除</button>
@@ -91,22 +113,28 @@
             <span class="cp-reply-hint-text">回复 @{{ replyTarget.nickname }}</span>
             <button class="cp-reply-cancel" @click="cancelReply">取消</button>
           </div>
-          <div class="cp-foot-row">
-            <input
-              ref="inputEl"
-              v-model="draft"
-              class="cp-input"
-              :placeholder="replyTarget ? '回复 ' + replyTarget.nickname : (auth.isLoggedIn ? '说点什么吧…' : '登录后参与评论')"
-              maxlength="1000"
-              :disabled="submitting"
-              @keyup.enter="submit"
-            />
-            <button class="cp-send" :disabled="submitting || !draft.trim()" @click="submit">发送</button>
-          </div>
+          <RichInput
+            ref="richInputEl"
+            v-model="draft"
+            v-model:images="draftImages"
+            :max-images="3"
+            :maxlength="1000"
+            :placeholder="replyTarget ? '回复 ' + replyTarget.nickname : (auth.isLoggedIn ? '说点什么吧…' : '登录后参与评论')"
+            :disabled="submitting || !auth.isLoggedIn"
+            :sending="submitting"
+            :dark="isPc"
+            @submit="submit"
+          />
         </footer>
       </section>
     </div>
   </Teleport>
+  <ImageViewer
+    v-if="viewerOpen"
+    :images="viewerImages"
+    :index="viewerIndex"
+    @close="viewerOpen = false"
+  />
 </template>
 
 <script setup>
@@ -122,6 +150,8 @@ import {
   createReply
 } from '../api/comments'
 import { useAuthStore } from '../stores/auth'
+import RichInput from './RichInput.vue'
+import ImageViewer from './ImageViewer.vue'
 
 const props = defineProps({
   post: { type: Object, required: true },
@@ -139,15 +169,19 @@ const auth = useAuthStore()
 const isPc = computed(() => window.innerWidth >= 768)
 
 const listEl = ref(null)
-const inputEl = ref(null)
+const richInputEl = ref(null)
 const comments = ref([])
 const cursor = ref(null)
 const hasMore = ref(true)
 const loading = ref(false)
 const loadingMore = ref(false)
 const draft = ref('')
+const draftImages = ref([])
 const submitting = ref(false)
 const replyTarget = ref(null)
+const viewerImages = ref([])
+const viewerIndex = ref(0)
+const viewerOpen = ref(false)
 
 const rowEls = {}
 const flashKey = ref('')
@@ -342,7 +376,7 @@ function startReply(target, rootComment) {
     loadThread(rootComment, null, 1)
   }
   nextTick(() => {
-    if (inputEl.value) inputEl.value.focus()
+    if (richInputEl.value) richInputEl.value.focus()
   })
 }
 
@@ -350,14 +384,21 @@ function cancelReply() {
   replyTarget.value = null
 }
 
+function openViewer(images, index) {
+  viewerImages.value = images || []
+  viewerIndex.value = index || 0
+  viewerOpen.value = true
+}
+
 async function submit() {
   const text = draft.value.trim()
-  if (!text || submitting.value) return
+  const images = draftImages.value.filter((img) => !img.uploading && img.object).map((img) => img.object)
+  if ((!text && !images.length) || submitting.value) return
   if (!requireLogin()) return
   submitting.value = true
   try {
     if (replyTarget.value) {
-      const created = await createReply(replyTarget.value.id, text)
+      const created = await createReply(replyTarget.value.id, text, images)
       const rootComment = comments.value.find((x) => x.id === created.rootId)
       if (rootComment) {
         await loadThread(rootComment, created.id, 5)
@@ -365,18 +406,21 @@ async function submit() {
       }
       props.post.commentCount = (props.post.commentCount || 0) + 1
       draft.value = ''
+      draftImages.value = []
       replyTarget.value = null
     } else {
-      const created = await createComment(props.post.id, text)
+      const created = await createComment(props.post.id, text, images)
       comments.value.unshift(created)
       ensureThread(created.id)
       props.post.commentCount = (props.post.commentCount || 0) + 1
       draft.value = ''
+      draftImages.value = []
       requestAnimationFrame(() => {
         const el = listEl.value
         if (el) el.scrollTop = 0
       })
     }
+    if (richInputEl.value) richInputEl.value.closeEmoji()
   } catch (e) {
     // 错误提示已由拦截器处理
   } finally {
@@ -823,8 +867,7 @@ function onAvatarError(c) {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 0;
   flex-shrink: 0;
 }
 
@@ -837,6 +880,7 @@ function onAvatarError(c) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  margin: 10px 12px 0;
   padding: 6px 12px;
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.05);
@@ -865,57 +909,27 @@ function onAvatarError(c) {
   flex-shrink: 0;
 }
 
-.cp-foot-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.cp-imgs {
+  display: grid;
+  grid-template-columns: repeat(3, 92px);
+  gap: 6px;
+  margin-top: 8px;
 }
 
-.cp-input {
-  flex: 1;
-  height: 38px;
-  border-radius: 19px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: rgba(0, 0, 0, 0.05);
-  padding: 0 16px;
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.2s;
+.cp-imgs-1 {
+  grid-template-columns: 140px;
 }
 
-.cp-input:focus {
-  border-color: var(--sg-primary);
+.cp-img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  cursor: zoom-in;
+  background: rgba(0, 0, 0, 0.06);
 }
 
-.cp-panel-pc .cp-input {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: #fff;
-}
-
-.cp-panel-pc .cp-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.cp-send {
-  height: 38px;
-  padding: 0 20px;
-  border-radius: 19px;
-  background: var(--sg-primary);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  transition: opacity 0.2s, transform 0.15s;
-  flex-shrink: 0;
-}
-
-.cp-send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.cp-send:not(:disabled):hover {
-  background: var(--sg-primary-deep);
-  transform: scale(1.03);
+.cp-item-sub .cp-imgs {
+  grid-template-columns: repeat(3, 78px);
 }
 </style>

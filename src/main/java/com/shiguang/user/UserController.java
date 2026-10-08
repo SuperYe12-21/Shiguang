@@ -23,6 +23,7 @@ public class UserController {
     private final UserService userService;
     private final FeedService feedService;
     private final FollowService followService;
+    private final UserPrivacyService privacyService;
 
     @GetMapping("/me")
     public R<UserVO> me() {
@@ -45,21 +46,48 @@ public class UserController {
     public R<PageVO<PostVO>> likes(@PathVariable Long id,
                                    @RequestParam(required = false) String cursor,
                                    @RequestParam(defaultValue = "10") int limit) {
-        return R.ok(feedService.userLikes(id, SecurityUtils.getUserId(), cursor, limit));
+        Long viewerId = SecurityUtils.getUserId();
+        privacyService.assertCanView(id, viewerId, UserPrivacyService.Kind.LIKE);
+        return R.ok(feedService.userLikes(id, viewerId, cursor, limit));
+    }
+
+    @GetMapping("/{id}/favorites")
+    public R<PageVO<PostVO>> favorites(@PathVariable Long id,
+                                       @RequestParam(required = false) String cursor,
+                                       @RequestParam(defaultValue = "10") int limit) {
+        Long viewerId = SecurityUtils.getUserId();
+        privacyService.assertCanView(id, viewerId, UserPrivacyService.Kind.FAVORITE);
+        return R.ok(feedService.userFavorites(id, viewerId, cursor, limit));
     }
 
     @GetMapping("/{id}/followers")
     public R<PageVO<UserPublicVO>> followers(@PathVariable Long id,
                                              @RequestParam(required = false) Long cursor,
                                              @RequestParam(defaultValue = "20") int limit) {
-        return R.ok(followService.followers(id, SecurityUtils.getUserId(), cursor, limit));
+        Long viewerId = SecurityUtils.getUserId();
+        privacyService.assertCanView(id, viewerId, UserPrivacyService.Kind.FOLLOWER);
+        return R.ok(followService.followers(id, viewerId, cursor, limit));
     }
 
     @GetMapping("/{id}/following")
     public R<PageVO<UserPublicVO>> following(@PathVariable Long id,
                                              @RequestParam(required = false) Long cursor,
                                              @RequestParam(defaultValue = "20") int limit) {
-        return R.ok(followService.following(id, SecurityUtils.getUserId(), cursor, limit));
+        Long viewerId = SecurityUtils.getUserId();
+        privacyService.assertCanView(id, viewerId, UserPrivacyService.Kind.FOLLOWING);
+        return R.ok(followService.following(id, viewerId, cursor, limit));
+    }
+
+    /** 我的列表可见性设置 */
+    @GetMapping("/privacy")
+    public R<UserPrivacyVO> privacy() {
+        return R.ok(privacyService.get(SecurityUtils.getUserId()));
+    }
+
+    /** 整份覆盖保存可见性设置 */
+    @PutMapping("/privacy")
+    public R<UserPrivacyVO> updatePrivacy(@RequestBody UpdatePrivacyRequest request) {
+        return R.ok(privacyService.save(SecurityUtils.getUserId(), request));
     }
 
     @PutMapping("/me")

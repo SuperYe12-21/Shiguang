@@ -17,7 +17,10 @@ import com.shiguang.content.PostVO;
 import com.shiguang.content.PostVisibility;
 import com.shiguang.interaction.CommentCreatedEvent;
 import com.shiguang.interaction.CommentDeletedEvent;
+import com.shiguang.interaction.FavoriteService;
 import com.shiguang.interaction.LikeService;
+import com.shiguang.interaction.PostFavorite;
+import com.shiguang.interaction.PostFavoriteMapper;
 import com.shiguang.interaction.PostLike;
 import com.shiguang.interaction.PostLikeMapper;
 import com.shiguang.user.FollowService;
@@ -53,7 +56,9 @@ public class FeedService {
     private final PostMapper postMapper;
     private final PostService postService;
     private final LikeService likeService;
+    private final FavoriteService favoriteService;
     private final PostLikeMapper postLikeMapper;
+    private final PostFavoriteMapper postFavoriteMapper;
     private final FollowService followService;
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
@@ -224,6 +229,51 @@ public class FeedService {
         return epoch + "_" + like.getId();
     }
 
+    /** 用户收藏过的作品列表（仅已发布），按收藏时间倒序 */
+    public PageVO<PostVO> userFavorites(Long userId, Long viewerId, String cursor, int limit) {
+        int size = normalizeLimit(limit);
+        LambdaQueryWrapper<PostFavorite> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PostFavorite::getUserId, userId);
+        if (cursor != null && !cursor.isBlank()) {
+            Cursor c = parseCursor(cursor);
+            wrapper.and(w -> w.lt(PostFavorite::getCreatedAt, c.time())
+                    .or(o -> o.eq(PostFavorite::getCreatedAt, c.time()).lt(PostFavorite::getId, c.id())));
+        }
+        wrapper.orderByDesc(PostFavorite::getCreatedAt)
+                .orderByDesc(PostFavorite::getId)
+                .last("LIMIT " + (size + 1));
+        List<PostFavorite> favorites = postFavoriteMapper.selectList(wrapper);
+        boolean hasMore = favorites.size() > size;
+        List<PostFavorite> pageFavorites = hasMore ? favorites.subList(0, size) : favorites;
+        List<Post> posts = new ArrayList<>();
+        for (PostFavorite favorite : pageFavorites) {
+            Post post = postMapper.selectById(favorite.getPostId());
+            if (post != null && PostStatus.PUBLISHED.equals(post.getStatus())
+                    && (!PostVisibility.PRIVATE.equals(post.getVisibility())
+                            || post.getUserId().equals(viewerId))) {
+                posts.add(post);
+            }
+        }
+        if (posts.isEmpty()) {
+            return PageVO.<PostVO>builder().items(List.of())
+                    .hasMore(hasMore)
+                    .nextCursor(hasMore && !pageFavorites.isEmpty()
+                            ? favoriteCursorOf(pageFavorites.get(pageFavorites.size() - 1)) : null)
+                    .build();
+        }
+        PageVO<PostVO> result = buildPage(posts, hasMore, viewerId);
+        if (hasMore) {
+            result.setNextCursor(favoriteCursorOf(pageFavorites.get(pageFavorites.size() - 1)));
+        }
+        return result;
+    }
+
+    private static String favoriteCursorOf(PostFavorite favorite) {
+        long epoch = favorite.getCreatedAt() == null ? 0
+                : favorite.getCreatedAt().atZone(ZoneId.systemDefault()).toEpochSecond();
+        return epoch + "_" + favorite.getId();
+    }
+
     private List<Post> queryPosts(Long userId, String cursorStr, int limit, PostStatus status,
                                   PostVisibility visibility) {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
@@ -258,12 +308,16 @@ public class FeedService {
             List<Long> ids = page.stream().map(Post::getId).toList();
             Map<Long, Integer> pending = likeService.postPendingDeltas(ids);
             Map<Long, Boolean> liked = likeService.postLikedMap(ids, viewerId);
+            Map<Long, Boolean> favorited = favoriteService.favoritedMap(ids, viewerId);
+            Map<Long, Long> favoriteCounts = favoriteService.countMap(ids);
             List<Long> authorIds = page.stream().map(Post::getUserId).distinct().toList();
             Map<Long, Boolean> following = followService.followingMap(viewerId, authorIds);
             for (Post post : page) {
                 PostVO vo = postService.toVO(post);
                 vo.setLikeCount(Math.max(0, vo.getLikeCount() + pending.getOrDefault(post.getId(), 0)));
                 vo.setLiked(viewerId != null && liked.getOrDefault(post.getId(), false));
+                vo.setFavorited(viewerId != null && favorited.getOrDefault(post.getId(), false));
+                vo.setFavoriteCount(favoriteCounts.getOrDefault(post.getId(), 0L));
                 if (vo.getAuthor() != null && viewerId != null) {
                     vo.getAuthor().setFollowing(following.getOrDefault(post.getUserId(), false));
                 }

@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
         <span>返回</span>
       </button>
-      <h1 class="nv-title">消息</h1>
+      <h1 class="nv-title">互动消息</h1>
       <div class="nv-top-space"></div>
     </header>
 
@@ -223,7 +223,7 @@ function goBack() {
   if (window.history.length > 1) {
     router.back()
   } else {
-    router.replace('/feed')
+    router.replace('/messages')
   }
 }
 
@@ -334,6 +334,12 @@ onBeforeUnmount(() => {
   padding: 0 18px 8px;
   display: flex;
   gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nv-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .nv.dark .nv-tabs {
@@ -350,8 +356,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: none;
   height: 34px;
-  padding: 0 14px;
+  padding: 0 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: transparent;

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { fetchFeed, fetchPostDetail, likePost, unlikePost } from '../api/posts'
+import { fetchFeed, fetchPostDetail, favoritePost, likePost, unfavoritePost, unlikePost } from '../api/posts'
 import { fetchUserLikes, fetchUserPosts } from '../api/user'
 import { useAuthStore } from './auth'
 
@@ -140,6 +140,26 @@ export const useFeedStore = defineStore('feed', {
       } catch (e) {
         post.liked = prevLiked
         post.likeCount = prevCount
+      }
+    },
+
+    async toggleFavorite(post) {
+      const auth = useAuthStore()
+      if (!auth.isLoggedIn) {
+        location.href = '/login'
+        return
+      }
+      const prevFavorited = !!post.favorited
+      const prevCount = post.favoriteCount || 0
+      post.favorited = !prevFavorited
+      post.favoriteCount = Math.max(0, prevCount + (prevFavorited ? -1 : 1))
+      try {
+        const data = prevFavorited ? await unfavoritePost(post.id) : await favoritePost(post.id)
+        post.favorited = data.favorited
+        post.favoriteCount = data.favoriteCount
+      } catch (e) {
+        post.favorited = prevFavorited
+        post.favoriteCount = prevCount
       }
     }
   }

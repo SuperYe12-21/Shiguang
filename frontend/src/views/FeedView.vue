@@ -25,6 +25,7 @@
             :resume-frame="resumeFrameFor(post)"
             :class="{ 'item-compact': commentPost && i === currentIndex }"
             @like="feed.toggleLike(post)"
+            @favorite="feed.toggleFavorite(post)"
             @comment="onComment(post)"
             @share="onShare(post)"
             @follow="onFollow(post)"
@@ -75,6 +76,7 @@
               :resume-frame="resumeFrameFor(post)"
               :class="{ 'item-compact': !!commentPost }"
               @like="feed.toggleLike(post)"
+              @favorite="feed.toggleFavorite(post)"
               @comment="onComment(post)"
               @share="onShare(post)"
               @follow="onFollow(post)"
@@ -111,7 +113,7 @@
         <button class="p-nav-btn" @click="router.push('/publish')">发布</button>
         <button class="p-nav-btn" @click="goMessages">
           消息
-          <UnreadBadge :count="notification.unread.total" />
+          <UnreadBadge :count="unreadTotal" />
         </button>
         <button class="p-nav-btn" @click="goMe">我的</button>
       </nav>
@@ -131,6 +133,11 @@
       @updated="onPostUpdated"
       @deleted="onPostDeleted"
     />
+    <SharePanel
+      v-if="sharePost"
+      :post="sharePost"
+      @close="sharePost = null"
+    />
   </div>
 </template>
 
@@ -148,16 +155,22 @@ import BottomNav from '../components/mobile/BottomNav.vue'
 import PcFeedCard from '../components/pc/PcFeedCard.vue'
 import CommentPanel from '../components/CommentPanel.vue'
 import PostMorePanel from '../components/PostMorePanel.vue'
+import SharePanel from '../components/SharePanel.vue'
 import UnreadBadge from '../components/UnreadBadge.vue'
 import { useNotificationStore } from '../stores/notification'
+import { useMessageStore } from '../stores/message'
 
 const route = useRoute()
 const router = useRouter()
 const feed = useFeedStore()
 const auth = useAuthStore()
 const notification = useNotificationStore()
+const message = useMessageStore()
+// 消息入口同时承载通知与私信，红点合并计算
+const unreadTotal = computed(() => notification.unread.total + message.unread)
 const commentPost = ref(null)
 const morePost = ref(null)
+const sharePost = ref(null)
 /** 通知跳转带来的评论定位参数，交给 CommentPanel 消费 */
 const focus = ref({ rootId: null, commentId: null })
 const likesOwnerName = ref('')
@@ -581,7 +594,7 @@ function goMessages() {
     router.push('/login')
     return
   }
-  router.push('/notifications')
+  router.push('/messages')
 }
 
 // 首页按钮：已在首页流时点击 = 刷新回第一屏；在他人作品流/点赞流时先回到首页
@@ -684,14 +697,8 @@ function onPostDeleted(patch) {
   })
 }
 
-async function onShare(post) {
-  try {
-    const url = location.origin + '/feed'
-    await navigator.clipboard.writeText(url)
-    ElMessage.success('链接已复制，快去分享吧')
-  } catch (e) {
-    ElMessage.info('复制失败，请手动复制地址')
-  }
+function onShare(post) {
+  sharePost.value = post
 }
 
 async function onFollow(post) {

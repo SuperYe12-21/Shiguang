@@ -2,6 +2,7 @@ package com.shiguang.content;
 
 import com.shiguang.common.BizException;
 import com.shiguang.interaction.CommentService;
+import com.shiguang.interaction.FavoriteService;
 import com.shiguang.interaction.LikeService;
 import com.shiguang.storage.StorageService;
 import com.shiguang.user.User;
@@ -25,6 +26,7 @@ public class PostService {
     private final UserService userService;
     private final StorageService storageService;
     private final LikeService likeService;
+    private final FavoriteService favoriteService;
     private final CommentService commentService;
     private final FollowService followService;
     private final ApplicationEventPublisher eventPublisher;
@@ -77,6 +79,8 @@ public class PostService {
         }
         PostVO vo = toVO(post);
         vo.setLiked(viewerId != null && likeService.isPostLiked(id, viewerId));
+        vo.setFavorited(viewerId != null && favoriteService.isFavorited(id, viewerId));
+        vo.setFavoriteCount(favoriteService.countMap(java.util.List.of(id)).getOrDefault(id, 0L));
         vo.setLikeCount(Math.max(0, post.getLikeCount() + likeService.postPendingDelta(id)));
         if (vo.getAuthor() != null && viewerId != null) {
             vo.getAuthor().setFollowing(followService.followingMap(viewerId, java.util.List.of(post.getUserId()))
@@ -91,6 +95,7 @@ public class PostService {
         deleteObjects(post);
         postMapper.deleteById(id);
         likeService.cleanupPost(id);
+        favoriteService.cleanupPost(id);
         commentService.cleanupPost(id);
         eventPublisher.publishEvent(new PostDeletedEvent(id));
     }

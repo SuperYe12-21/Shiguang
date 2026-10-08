@@ -1,14 +1,17 @@
 package com.shiguang.interaction;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
-@TableName("comment")
+@TableName(value = "comment", autoResultMap = true)
 public class Comment {
 
     @TableId(type = IdType.AUTO)
@@ -28,6 +31,10 @@ public class Comment {
     private Long userId;
 
     private String content;
+
+    /** 图片对象名列表，最多 3 张 */
+    @TableField(value = "image_urls", typeHandler = JacksonTypeHandler.class)
+    private List<String> imagesObject;
 
     private Integer likeCount;
 

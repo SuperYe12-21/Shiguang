@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -29,6 +30,9 @@ public class CommentVO {
     private Long userId;
 
     private String content;
+
+    /** 评论图片（续期后的可访问地址） */
+    private List<String> images;
 
     private Integer likeCount;
 

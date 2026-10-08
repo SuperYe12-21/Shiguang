@@ -22,6 +22,7 @@ public class UserService {
     private final PostMapper postMapper;
     private final StorageService storageService;
     private final LikeService likeService;
+    private final UserPrivacyService privacyService;
 
     @Transactional
     public User findOrCreateByPhone(String phone) {
@@ -60,6 +61,8 @@ public class UserService {
                         .eq(Post::getStatus, PostStatus.PUBLISHED)))
                 .likeCount(totalLikes(userId))
                 .followedByMe(followService.isFollowing(viewerId, userId))
+                .matched(followService.isFollowing(userId, viewerId))
+                .viewerCanSee(privacyService.access(userId, viewerId))
                 .build();
     }
 

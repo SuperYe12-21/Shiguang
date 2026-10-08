@@ -4,6 +4,8 @@ import com.shiguang.common.PageVO;
 import com.shiguang.common.R;
 import com.shiguang.common.SecurityUtils;
 import com.shiguang.feed.FeedService;
+import com.shiguang.interaction.FavoriteService;
+import com.shiguang.interaction.FavoriteVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,6 +25,7 @@ public class PostController {
 
     private final PostService postService;
     private final FeedService feedService;
+    private final FavoriteService favoriteService;
 
     @PostMapping
     public R<PostVO> create(@Valid @RequestBody CreatePostRequest request) {
@@ -56,5 +59,17 @@ public class PostController {
     @PutMapping("/{id}/visibility")
     public R<PostVO> updateVisibility(@PathVariable Long id, @Valid @RequestBody UpdateVisibilityRequest request) {
         return R.ok(postService.setVisibility(id, request.getVisibility(), SecurityUtils.getUserId()));
+    }
+
+    /** 收藏（重复收藏幂等） */
+    @PostMapping("/{id}/favorite")
+    public R<FavoriteVO> favorite(@PathVariable Long id) {
+        return R.ok(favoriteService.favorite(id, SecurityUtils.getUserId()));
+    }
+
+    /** 取消收藏（未收藏时幂等） */
+    @DeleteMapping("/{id}/favorite")
+    public R<FavoriteVO> unfavorite(@PathVariable Long id) {
+        return R.ok(favoriteService.unfavorite(id, SecurityUtils.getUserId()));
     }
 }

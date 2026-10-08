@@ -8,5 +8,6 @@ public record UserPublicVO(
         String avatarUrl,
         String bio,
         LocalDateTime createdAt,
-        Boolean followedByMe) {
+        Boolean followedByMe,
+        Boolean matched) {
 }
