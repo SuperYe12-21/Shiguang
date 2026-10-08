@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shiguang.common.BizException;
 import com.shiguang.common.PageVO;
+import com.shiguang.common.SearchText;
 import com.shiguang.content.Post;
 import com.shiguang.content.PostDeletedEvent;
 import com.shiguang.content.PostMapper;
@@ -51,7 +52,11 @@ public class FeedService {
     private static final Duration HOME_CACHE_TTL = Duration.ofSeconds(30);
     private static final int DEFAULT_LIMIT = 10;
     private static final int MAX_LIMIT = 30;
+    /** 朋友动态：互关好友数量上限（避免 IN 条件过长） */
+    private static final int FRIEND_IDS_LIMIT = 200;
+    private static final String FRIENDS_SEEN_KEY = "feed:friends:seen:";
     private static final String SEEN_CURSOR_PREFIX = "seen_";
+    private static final String HISTORY_CURSOR_PREFIX = "hist_";
 
     private final PostMapper postMapper;
     private final PostService postService;
@@ -63,6 +68,7 @@ public class FeedService {
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
     private final FeedSeenService feedSeenService;
+    private final ViewCountService viewCountService;
 
     /** 推荐流：登录用户优先未看过的内容，全部看完后按最久未看轮换；未登录保持时间倒序 */
     public PageVO<PostVO> feed(String cursor, int limit, Long viewerId) {
@@ -182,6 +188,133 @@ public class FeedService {
         boolean hasMore = rows.size() > size;
         List<Post> page = hasMore ? rows.subList(0, size) : rows;
         return buildPage(page, hasMore, viewerId);
+    }
+
+    /** 搜索公开作品：标题 / 简介模糊匹配，创建时间倒序游标分页 */
+    public PageVO<PostVO> searchPosts(String keyword, String cursor, int limit, Long viewerId) {
+        int size = normalizeLimit(limit);
+        String kw = SearchText.normalize(keyword);
+        if (kw.isEmpty()) {
+            return PageVO.<PostVO>builder().items(List.of()).nextCursor(null).hasMore(false).build();
+        }
+        LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Post::getStatus, PostStatus.PUBLISHED)
+                .eq(Post::getVisibility, PostVisibility.PUBLIC)
+                .and(w -> w.like(Post::getTitle, SearchText.escapeLike(kw))
+                        .or().like(Post::getDescription, SearchText.escapeLike(kw)));
+        if (cursor != null && !cursor.isBlank()) {
+            Cursor c = parseCursor(cursor);
+            wrapper.and(w -> w.lt(Post::getCreatedAt, c.time())
+                    .or(o -> o.eq(Post::getCreatedAt, c.time()).lt(Post::getId, c.id())));
+        }
+        wrapper.orderByDesc(Post::getCreatedAt)
+                .orderByDesc(Post::getId)
+                .last("LIMIT " + (size + 1));
+        List<Post> rows = postMapper.selectList(wrapper);
+        boolean hasMore = rows.size() > size;
+        List<Post> page = hasMore ? rows.subList(0, size) : rows;
+        return buildPage(page, hasMore, viewerId);
+    }
+
+    /** 朋友动态：互关好友发布的公开作品，创建时间倒序游标分页（不含自己） */
+    public PageVO<PostVO> friendsFeed(Long viewerId, String cursor, int limit) {
+        int size = normalizeLimit(limit);
+        List<Long> friendIds = new ArrayList<>(followService.friendIds(viewerId));
+        if (friendIds.size() > FRIEND_IDS_LIMIT) {
+            friendIds = friendIds.subList(0, FRIEND_IDS_LIMIT);
+        }
+        if (friendIds.isEmpty()) {
+            return emptyPage();
+        }
+        LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<Post>()
+                .eq(Post::getStatus, PostStatus.PUBLISHED)
+                .eq(Post::getVisibility, PostVisibility.PUBLIC)
+                .in(Post::getUserId, friendIds);
+        if (cursor != null && !cursor.isBlank()) {
+            Cursor c = parseCursor(cursor);
+            wrapper.and(w -> w.lt(Post::getCreatedAt, c.time())
+                    .or(o -> o.eq(Post::getCreatedAt, c.time()).lt(Post::getId, c.id())));
+        }
+        wrapper.orderByDesc(Post::getCreatedAt)
+                .orderByDesc(Post::getId)
+                .last("LIMIT " + (size + 1));
+        List<Post> rows = postMapper.selectList(wrapper);
+        boolean hasMore = rows.size() > size;
+        List<Post> page = hasMore ? rows.subList(0, size) : rows;
+        return buildPage(page, hasMore, viewerId);
+    }
+
+    /** 朋友动态红点状态：有比"上次查看"更新的好友作品则为未读 */
+    public FriendsUnreadVO friendsUnread(Long userId) {
+        Long latestId = friendsLatestPostId(userId);
+        Long seenId = friendsSeenId(userId);
+        boolean unread = latestId != null && (seenId == null || latestId > seenId);
+        return new FriendsUnreadVO(unread, latestId, seenId);
+    }
+
+    /** 标记朋友动态已读：记录当前好友最新作品 id */
+    public void markFriendsSeen(Long userId) {
+        Long latestId = friendsLatestPostId(userId);
+        if (latestId == null) {
+            return;
+        }
+        try {
+            redis.opsForValue().set(FRIENDS_SEEN_KEY + userId, String.valueOf(latestId));
+        } catch (Exception e) {
+            log.warn("标记朋友动态已读失败 userId={}: {}", userId, e.getMessage());
+        }
+    }
+
+    /** 互关好友（不含自己）的公开已发布作品中最新一条的 id */
+    private Long friendsLatestPostId(Long viewerId) {
+        List<Long> friendIds = new ArrayList<>(followService.friendIds(viewerId));
+        if (friendIds.isEmpty()) {
+            return null;
+        }
+        if (friendIds.size() > FRIEND_IDS_LIMIT) {
+            friendIds = friendIds.subList(0, FRIEND_IDS_LIMIT);
+        }
+        List<Post> rows = postMapper.selectList(new LambdaQueryWrapper<Post>()
+                .select(Post::getId)
+                .eq(Post::getStatus, PostStatus.PUBLISHED)
+                .eq(Post::getVisibility, PostVisibility.PUBLIC)
+                .in(Post::getUserId, friendIds)
+                .orderByDesc(Post::getCreatedAt)
+                .orderByDesc(Post::getId)
+                .last("LIMIT 1"));
+        return rows.isEmpty() ? null : rows.get(0).getId();
+    }
+
+    private Long friendsSeenId(Long userId) {
+        try {
+            String raw = redis.opsForValue().get(FRIENDS_SEEN_KEY + userId);
+            return raw == null ? null : Long.parseLong(raw);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 观看历史：按最近观看时间倒序分页（仅自己可见，已删除/不可见的过滤掉） */
+    public PageVO<PostVO> history(Long viewerId, String cursor, int limit) {
+        if (viewerId == null) {
+            return emptyPage();
+        }
+        int size = normalizeLimit(limit);
+        long offset = parseHistoryOffset(cursor);
+        List<Long> ids = feedSeenService.pageSeenDesc(viewerId, offset, size);
+        if (ids.isEmpty()) {
+            return emptyPage();
+        }
+        Map<Long, Post> posts = loadPublishedByIds(ids);
+        List<Post> ordered = ids.stream().map(posts::get).filter(Objects::nonNull).toList();
+        boolean maybeMore = ids.size() == size;
+        String nextCursor = maybeMore ? HISTORY_CURSOR_PREFIX + (offset + ids.size()) : null;
+        return buildPage(ordered, nextCursor, viewerId);
+    }
+
+    /** 清空观看历史（不影响已累计的播放量） */
+    public void clearHistory(Long viewerId) {
+        feedSeenService.clear(viewerId);
     }
 
     /** 用户点赞过的作品列表（仅已发布），按点赞时间倒序 */
@@ -307,6 +440,7 @@ public class FeedService {
         if (!page.isEmpty()) {
             List<Long> ids = page.stream().map(Post::getId).toList();
             Map<Long, Integer> pending = likeService.postPendingDeltas(ids);
+            Map<Long, Long> viewPending = viewCountService.pendingDeltas(ids);
             Map<Long, Boolean> liked = likeService.postLikedMap(ids, viewerId);
             Map<Long, Boolean> favorited = favoriteService.favoritedMap(ids, viewerId);
             Map<Long, Long> favoriteCounts = favoriteService.countMap(ids);
@@ -315,6 +449,7 @@ public class FeedService {
             for (Post post : page) {
                 PostVO vo = postService.toVO(post);
                 vo.setLikeCount(Math.max(0, vo.getLikeCount() + pending.getOrDefault(post.getId(), 0)));
+                vo.setViewCount(Math.max(0, vo.getViewCount() + viewPending.getOrDefault(post.getId(), 0L)));
                 vo.setLiked(viewerId != null && liked.getOrDefault(post.getId(), false));
                 vo.setFavorited(viewerId != null && favorited.getOrDefault(post.getId(), false));
                 vo.setFavoriteCount(favoriteCounts.getOrDefault(post.getId(), 0L));
@@ -349,6 +484,17 @@ public class FeedService {
     private static long parseSeenOffset(String cursor) {
         try {
             return Long.parseLong(cursor.substring(SEEN_CURSOR_PREFIX.length()));
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
+    private static long parseHistoryOffset(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(cursor.substring(HISTORY_CURSOR_PREFIX.length()));
         } catch (Exception e) {
             return 0L;
         }

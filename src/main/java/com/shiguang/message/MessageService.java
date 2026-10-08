@@ -350,7 +350,7 @@ public class MessageService {
                 || avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) {
             return avatarUrl;
         }
-        return storageService.presignedGetUrl(avatarUrl);
+        return storageService.publicUrl(avatarUrl);
     }
 
     /** 批量转 VO：一次性取齐卡片作品与作者昵称 */
@@ -416,14 +416,14 @@ public class MessageService {
         if (object == null || object.isBlank()) {
             return null;
         }
-        return storageService.presignedGetUrl(object);
+        return storageService.publicUrl(object);
     }
 
     private List<String> toImageUrls(List<String> objects) {
         if (objects == null || objects.isEmpty()) {
             return List.of();
         }
-        return objects.stream().map(storageService::presignedGetUrl).toList();
+        return objects.stream().map(storageService::publicUrl).toList();
     }
 
     private static MessageType typeOf(PrivateMessage message) {

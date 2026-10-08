@@ -27,16 +27,35 @@ jwt:
 app:
   sms:
     provider: ${SMS_PROVIDER:mock}
+    # 仅 provider=mock 时生效；换成真实通道后即使误配也不会被真人用上（SmsCodeService 会忽略并告警）
     mock-code: ${SMS_MOCK_CODE:123456}
     code-expire-minutes: ${SMS_CODE_EXPIRE_MINUTES:5}
     cooldown-seconds: ${SMS_COOLDOWN_SECONDS:60}
     hourly-limit: ${SMS_HOURLY_LIMIT:5}
+    aliyun:
+      access-key-id: ${SMS_ACCESS_KEY_ID:}
+      access-key-secret: ${SMS_ACCESS_KEY_SECRET:}
+      sign-name: ${SMS_SIGN_NAME:}
+      template-code: ${SMS_TEMPLATE_CODE:}
+      endpoint: ${SMS_ENDPOINT:dysmsapi.aliyuncs.com}
   storage:
+    # minio=本地开发；oss=生产（阿里云对象存储，媒体直连 OSS，字节流不经过应用服务器）
+    type: ${STORAGE_TYPE:minio}
     minio:
       endpoint: ${MINIO_ENDPOINT:http://127.0.0.1:9000}
       access-key: ${MINIO_ACCESS_KEY:minioadmin}
       secret-key: ${MINIO_SECRET_KEY:minioadmin}
       bucket: ${MINIO_BUCKET:shiguang-media}
+    oss:
+      # 公网 endpoint：用来生成浏览器直传的预签名地址
+      endpoint: ${OSS_ENDPOINT:}
+      # 内网 endpoint：服务端转码读写走这条，同地域免流量费；留空则用公网
+      internal-endpoint: ${OSS_INTERNAL_ENDPOINT:}
+      # 浏览器访问媒体的前缀，默认 https://{bucket}.{endpoint}；以后接 CDN 只改这一项
+      public-base-url: ${OSS_PUBLIC_BASE_URL:}
+      access-key-id: ${OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+      bucket: ${OSS_BUCKET:}
     presign-expiry-minutes: ${STORAGE_PRESIGN_EXPIRY_MINUTES:60}
   transcode:
     ffmpeg-path: ${FFMPEG_PATH:ffmpeg}

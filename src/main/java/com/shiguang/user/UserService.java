@@ -100,7 +100,7 @@ public class UserService {
         if (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) {
             return avatarUrl;
         }
-        return storageService.presignedGetUrl(avatarUrl);
+        return storageService.publicUrl(avatarUrl);
     }
 
     @Transactional

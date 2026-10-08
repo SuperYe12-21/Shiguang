@@ -175,8 +175,8 @@ class PostServiceTest {
         post.setLikeCount(3);
         post.setCommentCount(5);
         when(postMapper.selectById(1L)).thenReturn(post);
-        when(storageService.presignedGetUrl("videos/out.mp4")).thenReturn("http://minio/videos/out.mp4?sig=1");
-        when(storageService.presignedGetUrl("covers/c.jpg")).thenReturn("http://minio/covers/c.jpg?sig=2");
+        when(storageService.publicUrl("videos/out.mp4")).thenReturn("http://minio/videos/out.mp4?sig=1");
+        when(storageService.publicUrl("covers/c.jpg")).thenReturn("http://minio/covers/c.jpg?sig=2");
 
         PostVO vo = postService.getDetail(1L, null);
 

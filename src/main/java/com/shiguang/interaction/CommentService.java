@@ -340,14 +340,14 @@ public class CommentService {
                 || avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) {
             return avatarUrl;
         }
-        return storageService.presignedGetUrl(avatarUrl);
+        return storageService.publicUrl(avatarUrl);
     }
 
     private List<String> toImageUrls(List<String> objects) {
         if (objects == null || objects.isEmpty()) {
             return List.of();
         }
-        return objects.stream().map(storageService::presignedGetUrl).toList();
+        return objects.stream().map(storageService::publicUrl).toList();
     }
 
     private static int normalizeLimit(int limit) {

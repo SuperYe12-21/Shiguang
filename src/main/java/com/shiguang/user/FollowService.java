@@ -3,6 +3,7 @@ package com.shiguang.user;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.shiguang.common.BizException;
 import com.shiguang.common.PageVO;
+import com.shiguang.common.SearchText;
 import com.shiguang.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -76,6 +77,66 @@ public class FollowService {
                 .orderByDesc(Follow::getId)
                 .last("LIMIT " + (normalizeLimit(limit) + 1)));
         return toUserPage(rows, Follow::getFolloweeId, viewerId, normalizeLimit(limit));
+    }
+
+    /** 互关好友列表：我关注的人与我粉丝的交集，按关注时间倒序游标分页 */
+    public PageVO<UserPublicVO> friends(Long userId, Long cursorId, int limit) {
+        requireUser(userId);
+        Set<Long> followingIds = friendIds(userId);
+        if (followingIds.isEmpty()) {
+            return PageVO.<UserPublicVO>builder().items(List.of()).nextCursor(null).hasMore(false).build();
+        }
+        List<Follow> rows = followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                .eq(Follow::getFolloweeId, userId)
+                .in(Follow::getFollowerId, followingIds)
+                .lt(cursorId != null && cursorId > 0, Follow::getId, cursorId)
+                .orderByDesc(Follow::getId)
+                .last("LIMIT " + (normalizeLimit(limit) + 1)));
+        return toUserPage(rows, Follow::getFollowerId, userId, normalizeLimit(limit));
+    }
+
+    /** 互关好友 id 集合（朋友页 / 朋友动态复用） */
+    public Set<Long> friendIds(Long userId) {
+        Set<Long> followingIds = followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                        .eq(Follow::getFollowerId, userId)
+                        .orderByDesc(Follow::getId)
+                        .last("LIMIT 500"))
+                .stream().map(Follow::getFolloweeId).collect(Collectors.toSet());
+        if (followingIds.isEmpty()) {
+            return Set.of();
+        }
+        return followMapper.selectList(new LambdaQueryWrapper<Follow>()
+                        .eq(Follow::getFolloweeId, userId)
+                        .in(Follow::getFollowerId, followingIds))
+                .stream().map(Follow::getFollowerId).collect(Collectors.toSet());
+    }
+
+    /** 搜索用户：按昵称模糊匹配，id 倒序游标分页（演示规模用 LIKE 足够） */
+    public PageVO<UserPublicVO> searchUsers(String keyword, Long viewerId, Long cursorId, int limit) {
+        String kw = SearchText.normalize(keyword);
+        int size = normalizeLimit(limit);
+        if (kw.isEmpty()) {
+            return PageVO.<UserPublicVO>builder().items(List.of()).nextCursor(null).hasMore(false).build();
+        }
+        List<User> rows = userMapper.selectList(new LambdaQueryWrapper<User>()
+                .like(User::getNickname, SearchText.escapeLike(kw))
+                .lt(cursorId != null && cursorId > 0, User::getId, cursorId)
+                .orderByDesc(User::getId)
+                .last("LIMIT " + (size + 1)));
+        boolean hasMore = rows.size() > size;
+        List<User> page = hasMore ? rows.subList(0, size) : rows;
+        if (page.isEmpty()) {
+            return PageVO.<UserPublicVO>builder().items(List.of()).nextCursor(null).hasMore(hasMore).build();
+        }
+        List<Long> ids = page.stream().map(User::getId).toList();
+        Map<Long, Boolean> following = followingMap(viewerId, ids);
+        Map<Long, Boolean> matched = matchedMap(viewerId, ids);
+        List<UserPublicVO> items = page.stream()
+                .map(u -> toPublicVO(u, following.getOrDefault(u.getId(), false),
+                        matched.getOrDefault(u.getId(), false)))
+                .toList();
+        String nextCursor = hasMore ? page.get(page.size() - 1).getId().toString() : null;
+        return PageVO.<UserPublicVO>builder().items(items).nextCursor(nextCursor).hasMore(hasMore).build();
     }
 
     public long followerCount(Long userId) {
@@ -192,7 +253,7 @@ public class FollowService {
                 || avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) {
             return avatarUrl;
         }
-        return storageService.presignedGetUrl(avatarUrl);
+        return storageService.publicUrl(avatarUrl);
     }
 
     private static int normalizeLimit(int limit) {

@@ -73,8 +73,8 @@ class ContentFlowTest {
     @Test
     void createImagePost_publishedAndDetailShowsSignedUrls() throws Exception {
         String token = login(phone);
-        when(storageService.presignedGetUrl("images/a.jpg")).thenReturn("http://127.0.0.1:9000/images/a.jpg?sig=1");
-        when(storageService.presignedGetUrl("images/b.jpg")).thenReturn("http://127.0.0.1:9000/images/b.jpg?sig=2");
+        when(storageService.publicUrl("images/a.jpg")).thenReturn("http://127.0.0.1:9000/images/a.jpg?sig=1");
+        when(storageService.publicUrl("images/b.jpg")).thenReturn("http://127.0.0.1:9000/images/b.jpg?sig=2");
 
         MvcResult created = mockMvc.perform(post("/api/posts")
                         .header("Authorization", "Bearer " + token)
@@ -121,7 +121,7 @@ class ContentFlowTest {
     @Test
     void deleteOwnPost_ok_andOthersForbidden() throws Exception {
         String token = login(phone);
-        when(storageService.presignedGetUrl(anyString())).thenReturn("http://127.0.0.1:9000/x.jpg?sig=1");
+        when(storageService.publicUrl(anyString())).thenReturn("http://127.0.0.1:9000/x.jpg?sig=1");
         MvcResult created = mockMvc.perform(post("/api/posts")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)

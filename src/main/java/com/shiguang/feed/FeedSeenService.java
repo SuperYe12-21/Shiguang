@@ -24,6 +24,7 @@ public class FeedSeenService {
 
     private final StringRedisTemplate redis;
     private final PostMapper postMapper;
+    private final ViewCountService viewCountService;
 
     /** 记录一次有效观看，重复观看只更新时间；任何异常都静默，不影响播放 */
     public void markSeen(Long userId, Long postId) {
@@ -40,6 +41,8 @@ public class FeedSeenService {
             redis.opsForZSet().add(key, String.valueOf(postId), now);
             redis.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, now - RETENTION.toMillis());
             redis.expire(key, RETENTION);
+            // 同一次有效观看顺带累计播放量（按用户按天去重，内部静默）
+            viewCountService.recordView(postId, userId);
         } catch (Exception e) {
             log.warn("记录观看失败 userId={} postId={}: {}", userId, postId, e.getMessage());
         }
@@ -92,6 +95,43 @@ public class FeedSeenService {
         } catch (Exception e) {
             log.warn("读取观看记录分页失败 userId={}: {}", userId, e.getMessage());
             return List.of();
+        }
+    }
+
+    /** 按“最近看过”的顺序（score 降序）取一段已看作品 ID（观看历史页用） */
+    public List<Long> pageSeenDesc(Long userId, long offset, int limit) {
+        if (userId == null || limit <= 0 || offset < 0) {
+            return List.of();
+        }
+        try {
+            Set<String> members = redis.opsForZSet().reverseRange(key(userId), offset, offset + limit - 1);
+            if (members == null || members.isEmpty()) {
+                return List.of();
+            }
+            List<Long> ids = new ArrayList<>(members.size());
+            for (String member : members) {
+                try {
+                    ids.add(Long.parseLong(member));
+                } catch (NumberFormatException ignored) {
+                    // 脏数据忽略
+                }
+            }
+            return ids;
+        } catch (Exception e) {
+            log.warn("读取观看历史分页失败 userId={}: {}", userId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 清空观看历史（不影响播放量计数） */
+    public void clear(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        try {
+            redis.delete(key(userId));
+        } catch (Exception e) {
+            log.warn("清空观看记录失败 userId={}: {}", userId, e.getMessage());
         }
     }
 

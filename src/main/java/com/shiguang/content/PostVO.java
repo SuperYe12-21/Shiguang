@@ -32,6 +32,8 @@ public class PostVO {
 
     private Integer commentCount;
 
+    private Long viewCount;
+
     private Boolean liked;
 
     private Boolean favorited;

@@ -1,7 +1,5 @@
 package com.shiguang.storage;
 
-import io.minio.errors.ErrorResponseException;
-
 import java.io.File;
 import java.io.InputStream;
 
@@ -12,15 +10,16 @@ public interface StorageService {
 
     PresignResult presignPut(String objectName, String contentType);
 
-    String presignedGetUrl(String objectName);
+    /** 对象名 -> 浏览器可直接访问的地址（MinIO 走 /api/media 代理，OSS 走公网域名） */
+    String publicUrl(String objectName);
 
     void putObject(String objectName, File file, String contentType);
 
     InputStream getObject(String objectName);
 
-    ObjectStat stat(String objectName) throws ErrorResponseException;
+    ObjectStat stat(String objectName);
 
-    InputStream open(String objectName, long offset, long length) throws ErrorResponseException;
+    InputStream open(String objectName, long offset, long length);
 
     void deleteObject(String objectName);
 }

@@ -478,7 +478,7 @@ public class NotificationService {
                 || object.startsWith("http://") || object.startsWith("https://")) {
             return object == null || object.isBlank() ? null : object;
         }
-        return storageService.presignedGetUrl(object);
+        return storageService.publicUrl(object);
     }
 
     private static Object pickIgnoreCase(Map<String, Object> row, String key) {

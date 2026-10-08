@@ -1,6 +1,7 @@
 package com.shiguang.content;
 
 import com.shiguang.common.BizException;
+import com.shiguang.feed.ViewCountService;
 import com.shiguang.interaction.CommentService;
 import com.shiguang.interaction.FavoriteService;
 import com.shiguang.interaction.LikeService;
@@ -29,6 +30,7 @@ public class PostService {
     private final FavoriteService favoriteService;
     private final CommentService commentService;
     private final FollowService followService;
+    private final ViewCountService viewCountService;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -82,6 +84,8 @@ public class PostService {
         vo.setFavorited(viewerId != null && favoriteService.isFavorited(id, viewerId));
         vo.setFavoriteCount(favoriteService.countMap(java.util.List.of(id)).getOrDefault(id, 0L));
         vo.setLikeCount(Math.max(0, post.getLikeCount() + likeService.postPendingDelta(id)));
+        vo.setViewCount(Math.max(0, (post.getViewCount() == null ? 0L : post.getViewCount())
+                + viewCountService.pendingDeltas(java.util.List.of(id)).getOrDefault(id, 0L)));
         if (vo.getAuthor() != null && viewerId != null) {
             vo.getAuthor().setFollowing(followService.followingMap(viewerId, java.util.List.of(post.getUserId()))
                     .getOrDefault(post.getUserId(), false));
@@ -173,6 +177,7 @@ public class PostService {
                 .visibility(post.getVisibility())
                 .likeCount(post.getLikeCount())
                 .commentCount(post.getCommentCount())
+                .viewCount(post.getViewCount() == null ? 0L : post.getViewCount())
                 .failReason(post.getFailReason())
                 .createdAt(post.getCreatedAt())
                 .author(PostVO.Author.builder()
@@ -181,16 +186,16 @@ public class PostService {
                         .avatarUrl(author.getAvatarUrl() == null || author.getAvatarUrl().isBlank()
                                 || author.getAvatarUrl().startsWith("http")
                                 ? author.getAvatarUrl()
-                                : storageService.presignedGetUrl(author.getAvatarUrl()))
+                                : storageService.publicUrl(author.getAvatarUrl()))
                         .build());
         if (!isBlank(post.getVideoObject())) {
-            builder.videoUrl(storageService.presignedGetUrl(post.getVideoObject()));
+            builder.videoUrl(storageService.publicUrl(post.getVideoObject()));
         }
         if (!isBlank(post.getCoverObject())) {
-            builder.coverUrl(storageService.presignedGetUrl(post.getCoverObject()));
+            builder.coverUrl(storageService.publicUrl(post.getCoverObject()));
         }
         if (post.getImagesObject() != null) {
-            builder.images(post.getImagesObject().stream().map(storageService::presignedGetUrl).toList());
+            builder.images(post.getImagesObject().stream().map(storageService::publicUrl).toList());
         }
         return builder.build();
     }

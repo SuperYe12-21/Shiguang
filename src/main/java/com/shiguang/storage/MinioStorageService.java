@@ -12,6 +12,7 @@ import io.minio.StatObjectResponse;
 import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriUtils;
 
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
+@ConditionalOnProperty(name = "app.storage.type", havingValue = "minio", matchIfMissing = true)
 public class MinioStorageService implements StorageService {
 
     private final MinioClient client;
@@ -65,12 +67,12 @@ public class MinioStorageService implements StorageService {
                     .build());
             return new PresignResult(objectName, url);
         } catch (Exception e) {
-            throw new IllegalStateException("生成上传地址失败", e);
+            throw StorageException.failure("生成上传地址失败", e);
         }
     }
 
     @Override
-    public String presignedGetUrl(String objectName) {
+    public String publicUrl(String objectName) {
         return "/api/media/" + Arrays.stream(objectName.split("/"))
                 .map(segment -> UriUtils.encodePathSegment(segment, StandardCharsets.UTF_8))
                 .collect(Collectors.joining("/"));
@@ -86,7 +88,7 @@ public class MinioStorageService implements StorageService {
                     .stream(in, file.length(), -1)
                     .build());
         } catch (Exception e) {
-            throw new IllegalStateException("上传文件失败: " + objectName, e);
+            throw StorageException.failure("上传文件失败: " + objectName, e);
         }
     }
 
@@ -95,12 +97,12 @@ public class MinioStorageService implements StorageService {
         try {
             return client.getObject(GetObjectArgs.builder().bucket(bucket).object(objectName).build());
         } catch (Exception e) {
-            throw new IllegalStateException("读取文件失败: " + objectName, e);
+            throw StorageException.failure("读取文件失败: " + objectName, e);
         }
     }
 
     @Override
-    public ObjectStat stat(String objectName) throws ErrorResponseException {
+    public ObjectStat stat(String objectName) {
         try {
             StatObjectResponse stat = client.statObject(StatObjectArgs.builder()
                     .bucket(bucket)
@@ -108,14 +110,14 @@ public class MinioStorageService implements StorageService {
                     .build());
             return new ObjectStat(stat.size(), stat.contentType());
         } catch (ErrorResponseException e) {
-            throw e;
+            throw translate(e, objectName);
         } catch (Exception e) {
-            throw new IllegalStateException("读取文件信息失败: " + objectName, e);
+            throw StorageException.failure("读取文件信息失败: " + objectName, e);
         }
     }
 
     @Override
-    public InputStream open(String objectName, long offset, long length) throws ErrorResponseException {
+    public InputStream open(String objectName, long offset, long length) {
         try {
             return client.getObject(GetObjectArgs.builder()
                     .bucket(bucket)
@@ -124,9 +126,9 @@ public class MinioStorageService implements StorageService {
                     .length(length)
                     .build());
         } catch (ErrorResponseException e) {
-            throw e;
+            throw translate(e, objectName);
         } catch (Exception e) {
-            throw new IllegalStateException("读取文件失败: " + objectName, e);
+            throw StorageException.failure("读取文件失败: " + objectName, e);
         }
     }
 
@@ -137,7 +139,15 @@ public class MinioStorageService implements StorageService {
         } catch (ErrorResponseException e) {
             log.debug("对象不存在，跳过删除: {}", objectName);
         } catch (Exception e) {
-            throw new IllegalStateException("删除文件失败: " + objectName, e);
+            throw StorageException.failure("删除文件失败: " + objectName, e);
         }
+    }
+
+    /** MinIO 的 NoSuchKey 归一为 StorageException.notFound，其余为故障 */
+    private static StorageException translate(ErrorResponseException e, String objectName) {
+        String code = e.errorResponse() == null ? "" : e.errorResponse().code();
+        return "NoSuchKey".equals(code)
+                ? StorageException.notFound(objectName)
+                : StorageException.failure("读取文件信息失败: " + objectName, e);
     }
 }

@@ -1,6 +1,5 @@
 package com.shiguang.storage;
 
-import io.minio.errors.ErrorResponseException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -37,14 +36,19 @@ public class MediaController {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST);
             return;
         }
+        // {*objectName} 会把前导斜杠一起捕获（/videos/x.mp4）。MinIO 会归一化 URL 里的 //，
+        // 对象名对不对都读得到；OSS 是严格按 key 匹配的，不剥掉就会 404。这里统一归一化。
+        objectName = normalizeObjectName(objectName);
+        if (objectName == null) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
         StorageService.ObjectStat stat;
         try {
             stat = storageService.stat(objectName);
-        } catch (ErrorResponseException e) {
-            String code = e.errorResponse() == null ? "unknown" : e.errorResponse().code();
-            log.warn("媒体对象读取失败[{}]: {} ({})", code, objectName, e.errorResponse() == null
-                    ? e.getMessage() : e.errorResponse().message());
-            response.sendError("NoSuchKey".equals(code)
+        } catch (StorageException e) {
+            log.warn("媒体对象读取失败: {} ({})", objectName, e.getMessage());
+            response.sendError(e.isNotFound()
                     ? HttpServletResponse.SC_NOT_FOUND
                     : HttpServletResponse.SC_BAD_GATEWAY);
             return;
@@ -106,16 +110,17 @@ public class MediaController {
             try (InputStream in = storageService.open(objectName, start, length)) {
                 in.transferTo(response.getOutputStream());
                 return;
-            } catch (ErrorResponseException e) {
-                String code = e.errorResponse() == null ? "unknown" : e.errorResponse().code();
-                if (attempt < 2 && !response.isCommitted()) {
-                    log.warn("媒体数据读取失败[{}]（第 {} 次，重试一次）: {}", code, attempt, objectName);
+            } catch (StorageException e) {
+                boolean notFound = e.isNotFound();
+                if (attempt < 2 && !notFound && !response.isCommitted()) {
+                    log.warn("媒体数据读取失败（第 {} 次，重试一次）: {} ({})", attempt, objectName, e.getMessage());
                     continue;
                 }
-                log.warn("媒体数据读取失败[{}]: {} ({})", code, objectName, e.errorResponse() == null
-                        ? e.getMessage() : e.errorResponse().message());
+                log.warn("媒体数据读取失败: {} ({})", objectName, e.getMessage());
                 if (!response.isCommitted()) {
-                    response.sendError(HttpServletResponse.SC_BAD_GATEWAY);
+                    response.sendError(notFound
+                            ? HttpServletResponse.SC_NOT_FOUND
+                            : HttpServletResponse.SC_BAD_GATEWAY);
                 }
                 return;
             } catch (IOException e) {
@@ -142,6 +147,20 @@ public class MediaController {
                 return;
             }
         }
+    }
+
+    /** 剥掉前导斜杠并拒绝 .. 之类的越界片段；非法时返回 null */
+    private static String normalizeObjectName(String raw) {
+        String cleaned = raw.replaceFirst("^/+", "");
+        if (cleaned.isEmpty()) {
+            return null;
+        }
+        for (String segment : cleaned.split("/")) {
+            if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment)) {
+                return null;
+            }
+        }
+        return cleaned;
     }
 
     private static String resolveContentType(String objectName, String stored) {

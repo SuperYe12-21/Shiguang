@@ -49,6 +49,9 @@ public class Post {
 
     private Integer commentCount;
 
+    /** 有效播放数（观看满 3 秒上报，同一用户每天最多计一次） */
+    private Long viewCount;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
