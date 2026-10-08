@@ -236,3 +236,278 @@
 
 ### 备注
 - 本机开发环境内存紧张是「本地看着也卡」的一部分原因，建议关掉不用的 IDEA/浏览器标签；服务端部署时媒体建议由 Nginx 直接出（或对象存储直链），不要再经过 Spring 中转
+
+## 2026-10-08 对标抖音的五项优化（404 / 双击点赞 / 预加载 / 搜索 / 拆包）
+
+### 步 1：404 未知路由兜底页
+- 原来乱输地址会渲染出一片空白（路由未匹配 → 空 router-view）；现在新增 `frontend/src/views/NotFoundView.vue`，并在 `router/index.js` 末尾加 `/:pathMatch(.*)*` 兜底路由
+- 页面沿用米白 + 珊瑚红令牌：大号「404」+ 一句「这个页面走丢了」+「回首页 / 去搜索」两个按钮，手机与 PC 同一套自适应布局
+- 验证：无头 Edge 访问乱路径 `/no/such/page`，404 页正常渲染、按钮可跳转、控制台无报错
+
+### 步 2：双击点赞 + 爱心动效
+- 移动端 `FeedItem.vue`：单击不再立刻播放/暂停，而是延迟 260ms 判定——期间出现第二击（双击）就取消单击动作、改为点赞并冒爱心；超时无第二击才执行播放/暂停
+- 动效：以点击坐标为中心生成一颗粉色心（#ff4d6d），上浮 + 放大 + 淡出约 760ms，连点可连冒（图层 pointer-events:none 不挡交互）
+- 语义与抖音一致：未赞 → 点赞 + 冒心；已赞 → 只冒心不取消
+- PC 端 `PcFeedCard.vue` 同套逻辑（滚轮/拖拽翻页不受影响）；图文卡单击无操作、双击点赞
+- 验证：无头 Edge 专项——移动端双击冒心且点赞态 liked、图文卡双击冒心；PC 图文卡爱心出现且 not-liked→liked、二次双击保持 liked
+
+### 步 3：视频预加载（预热下两张）
+- `FeedView.vue` 新增 `warmIndexes` computed：定位当前位置之后**最近的两张视频卡**（自动跳过图文），下标经 `:warm` prop 传给卡片；卡片内 `preload` 由 metadata 提升为 auto
+- 只预热两张，兼顾切换流畅与带宽；与既有「当前卡 loadeddata 自动播」叠加，滑动/滚轮切换的等待感明显减少
+- 验证：无头 Edge 断言预热集合与 `preload="auto"` 恰好落在正确的两个下标上；连续切换多条无停顿
+
+### 步 4：搜索（用户 + 作品）
+- 后端：
+  - 新增 `com.shiguang.common.SearchText`：关键词归一化（trim、限长 50）+ LIKE 通配符转义（% _ \），空串即无有效关键词
+  - 新增 `com.shiguang.search.SearchController`：`GET /api/search/users`（昵称匹配，返回 UserPublicVO + followedByMe）与 `GET /api/search/posts`（标题/简介匹配，返回 PostVO），均复用现有游标分页与 R / PageVO 包装
+  - `FollowService.searchUsers` / `FeedService.searchPosts` 落在各自域内，复用既有 buildPage 与可见性规则
+- 前端：
+  - 新增 `api/search.js`；新增 `views/SearchView.vue`：输入框 350ms 防抖、「用户 / 作品」双 Tab、结果存 sessionStorage（返回不丢）、滚动到底自动加载下一页
+  - 用户结果行（头像 + 昵称 + 签名 + 关注按钮）；作品结果为三列宫格（视频角标），点条目进单作品页；PC 限宽 640px，移动端全屏
+- 入口：移动端首页左上角新增浮标 `.m-search-fab`；PC 顶栏加「搜索」按钮
+- 验证：接口 curl 实测 `keyword=彭` → 彭于烨(347)、`keyword=光` → 4 条作品；无头 Edge 15 项全过（Tab 切换、防抖只发一次请求、滚动加载、会话恢复、两个入口）
+
+### 步 5：前端拆包（Element Plus 按需引入）
+- 原状：`main.js` 全量 `app.use(ElementPlus)` + 整包 CSS → 主包 1116KB（gzip 369KB）、CSS 365KB，是首屏白屏偏长的主因
+- 现在：`main.js` 移除全量注册，组件内继续直接 `import { ElMessage, ElMessageBox }`（Vite 摇树只打用到的 JS）；CSS 改为按需四个：element-plus 的 base / el-message / el-message-box / el-overlay
+- 效果：**主包 1116KB → 219KB（gzip 369KB → 84KB，约 -77%）；CSS 365KB → 20KB**
+- 验证：`npm run build` 通过；E2E 全量回归确认消息提示、确认框与各页面渲染无回归
+
+### 本批验证汇总
+- 接口：两个搜索接口 curl 实测（用户/作品命中正确、字段与游标正常）
+- 浏览器：E2E 15/15 PASS（搜索页、首页浮标、预热属性、双击爱心、404、PC 搜索入口），0 控制台错误
+- 构建：前端 build 成功，产物体积如上
+- 遗留：README 截图占位待补；移动端局域网发布直传仍指向 127.0.0.1（部署前统一处理）
+## 2026-10-08 移动端滚动吸附兜底（部分手机浏览器一滑划过好几条）
+
+### 问题
+- 部分手机浏览器（尤其内置浏览器）对 CSS `scroll-snap-type` 支持不佳或完全不生效，首页信息流一滑就连续滑过好几条视频，停不在某一条上
+- 同一页面在支持 `scroll-snap` 的浏览器（微信 X5、Chrome 等）里表现正常
+
+### 改动（frontend/src/views/FeedView.vue）
+- 新增 JS 触摸吸附兜底：滚动停止后 180ms 检查位置，未对齐时补一次平滑吸附
+  - 位移 < 15% 屏：回弹到原卡片
+  - 位移 15%~160% 屏：正好前进/后退一条（还原"一条一停"）
+  - 位移 > 160% 屏：落到最近的整数条（大力甩动不做拉回，避免回弹突兀）
+  - 连续快滑：吸附动画中再次触摸时以目标位置为基准，两次快滑 = 前进两条，不会被吞
+- 只在"用户触摸过"的滚动上生效：程序化滚动（恢复观看位置、回第一条等）不受干预；评论打开、开机定位阶段自动跳过
+- 对支持原生吸附的浏览器无副作用：松手时位置已对齐，兜底逻辑直接跳过
+- CSS 增强：`.m-scroll > .feed-item` 加 `scroll-snap-stop: always`（支持该属性的浏览器一次甩动最多吸附一条）；`.m-scroll` 加 `overscroll-behavior-y: contain`（避免下拉误触浏览器刷新）
+
+### 验证
+- 新脚本 `.devtools/test-touch-snap.js`：关闭原生吸附模拟手机浏览器，10/10 通过（0.6 屏吸附、轻微位移回弹、1.2 屏前进一条、2.4 屏大甩落整数条、后退 0.7 屏退一条、无位移触摸不动、连续两次快滑前进两条、程序化滚动不被干预、无报错）
+- 回归：`.devtools/test-v2-optimizations.js` 15/15 通过，0 控制台报错## 2026-10-08 移动端搜索挪右上角 / PC"索"字形补偿 / 朋友页上线
+
+### 步 1：移动端首页搜索浮标移到右上角
+- `.m-search-fab` 由 `left: 14px` 改为 `right: 14px`，仍与安全区（`env(safe-area-inset-top)`）同一高度；左上角留给"返回条"（用户作品流/点赞流），两者不再打架
+- 验证：430×900 移动端实测浮标 `right=14px / left=378px`，仍在 `feed.mode === 'home' && !isSingle` 时显示
+
+### 步 2：PC 顶栏"搜索"二字视觉高度不齐（"索"偏矮）
+- 排查：canvas 度量显示两个字的 ascent/descent 完全一致（不是字体回退问题）；转到实际渲染像素测量（8 倍截图 + 逐列扫描墨迹）后确认——同字号下"搜"墨迹高 25.25px，"索"只有 24.875px（约矮 1.5%），属字形本身观感差异
+- 修复：`FeedView.vue` 顶栏按钮里把"索"包一层 `.p-glyph-tall`，用 `transform: scaleY(1.015)` 做光学补偿（`transform-origin: center 62%` 保证基线不飘），stroke 宽度不受影响
+- 验证：无头 Edge 读回 `transform: matrix(1, 0, 0, 1.015, 0, 0)`，按钮尺寸与其他导航项一致
+
+### 步 3：朋友页（互关好友 + 朋友动态）
+- 后端：
+  - `FollowService.friendIds(userId)`：取"我关注的人"与"我的粉丝"的交集（互关），单次 `LIMIT 500` 兜底避免超长 IN
+  - `FollowService.friends(...)`：互关列表，按关注时间倒序游标分页，复用 `toUserPage`（含 `followedByMe` / `matched`）
+  - `FeedService.friendsFeed(...)`：朋友动态流——互关好友 + 自己 的 `PUBLISHED/PUBLIC` 作品，创建时间倒序游标分页，复用 `buildPage`（点赞/收藏状态、作者关注态一并带上）；好友 id 上限 `FRIEND_IDS_LIMIT = 200`
+  - 新增接口：`GET /api/follow/friends`、`GET /api/feed/friends`（均需登录）
+- 前端：
+  - 新增 `api/friends.js`、`api/posts.js` 内 `fetchFriendsFeed`；新增 `views/FriendsView.vue`
+  - 页面结构：标题 + 互关人数 + 右上角搜索入口；「我的好友」「朋友动态」双 Tab
+    - 我的好友：头像 / 昵称 + "互相关注"标签 / 签名，右侧「私信」（进 `/chat/:id`）与「取消关注」；取消关注后立即从列表与动态流移除
+    - 朋友动态：作品宫格（移动端 3 列 / PC 5 列居中限宽 1180px），带视频角标、点赞数、作者名，点进 `/post/:id`
+    - 两处空状态都做了引导（"去找朋友" → 搜索页）
+  - 路由新增 `/friends`（`requiresAuth`）；`BottomNav.vue` 的"朋友"从"开发中"占位改为真实跳转并支持高亮，顺手移除了不再使用的 `ElMessage` 引用
+- 验证：
+  - 接口实测（彭于烨 347 账号）：`/api/follow/friends` 返回 4 位互关好友、`/api/feed/friends` 返回 9 条好友作品并带正确作者/类型
+  - 浏览器 E2E `.devtools/test-friends-ui.js` 13/13 PASS：移动端标题/好友条目/底部导航高亮/私信与取消关注按钮、动态 Tab 渲染 8 条（作者=彭于烨）、点作品进 `/post/316`、搜索浮标右上角；PC 端有顶栏无底栏、好友行居中限宽 620px、动态 5 列、字形补偿生效；0 控制台错误
+  - `npm run build` 通过（`FriendsView` 独立分包 7.46KB / gzip 3.49KB）
+  - 测试用的关注关系已全部回滚（350 与 347 恢复为互不关注，测试账号状态干净）
+
+## 2026-10-08 播放量 / 观看历史 / PC 空格暂停
+
+### 步 1：播放量（视频=播放、图文=浏览）
+- 迁移：`db/init/011_m11_view_count.sql` → `ALTER TABLE post ADD COLUMN view_count BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER comment_count`；`Post` / `PostVO` 加 `viewCount`，`PostService.toVO()` 填充
+- 计数不直接写库（与点赞同一套路，避免高频 UPDATE 打满数据库）：
+  - 新增 `feed/ViewCountService.java`
+    - `recordView(postId, userId)`：先 `SETNX view:dup:{postId}:{userId}`（TTL 24h）做"同一用户同一作品一天只算一次"的去重，是首次观看才 `HINCRBY view:pending p:{postId} 1`
+    - `pendingDeltas(ids)`：一次 `HMGET` 批量取增量；Redis 异常时降级为只显示数据库值
+    - `flushPendingCounts()`：Lua 脚本 `HGETALL + DEL` 原子弹出快照，再逐条 `UPDATE post SET view_count = view_count + ?`；落库抛异常时把增量加回 pending，不丢计数
+  - 新增 `feed/ViewCountFlusher.java`：`@Scheduled(fixedDelayString = "${app.view.flush-interval-ms:30000}")`，默认 30 秒落库一次
+- 埋点复用现有逻辑：`FeedSeenService.markSeen()`（首页每张卡片停留时触发）顺带调 `recordView()`，前端不需要多发一次请求
+- 展示合并"数据库值 + 未落库增量"：`FeedService.buildPage()`（首页/主页/点赞/朋友动态列表全部复用）与 `PostService.getDetail()`（单作品页），所以刚看完立刻能看到 +1，不用等落库
+- 前端展示：
+  - 移动端 `FeedItem.vue`：左下文案区新增一行 `N 次播放 / 次浏览`（VIDEO=播放、IMAGE=浏览），拖动进度条时随文案一起隐藏
+  - PC `PcFeedCard.vue`：信息栏在"短视频 · 日期"下方新增同样一行
+  - 个人主页宫格：移动端底部改成 `.pf-cell-stats` 横排（视频显示 ▶ 播放量 + ♥ 点赞量），PC 悬浮层改成 `.pc-ov-stats` 横排；顺带把移动端"仅自己可见"小锁从与统计行重叠的左下角挪到右上角
+
+### 步 2：观看历史
+- 后端：`FeedSeenService` 新增 `pageSeenDesc(userId, offset, size)`（ZSET `reverseRange` 按最近观看倒序）与 `clear(userId)`
+  - `FeedService.history()`：过滤已删除/非公开作品后分页，游标前缀 `hist_`（`parseHistoryOffset`）；`clearHistory()` 只清历史、不影响已累计播放量
+  - 接口：`GET /api/feed/history`、`DELETE /api/feed/history`（需登录，仅自己可见）
+- 前端：`api/posts.js` 加 `fetchHistory` / `clearHistory`；新增 `views/HistoryView.vue`
+  - PC 顶栏 + 移动顶栏（返回 / 标题 / 清空），3 列宫格（PC 5 列限宽 1180px）、滚动分页、空状态引导"去逛逛"、清空带二次确认
+- 入口：移动端个人主页右上角抽屉「观看历史」（在"编辑资料"下方）；PC 个人主页按钮组「观看历史」（在"账号设置"旁）
+- 路由：`/history`（requiresAuth）
+
+### 步 3：PC 空格键暂停/播放
+- `PcFeedCard.vue` 的 `defineExpose` 补 `togglePlay` 与 `playing`
+- `FeedView.vue` 的 `keydownHandler` 增加空格分支：输入框 / textarea / select / 可编辑区域聚焦时跳过（否则与输入冲突），`preventDefault()` 阻止按钮默认激活，作用于当前活动卡片
+- 与原有 ↑/↓/PageUp/PageDown 翻页快捷键并存
+
+### 验证
+- 接口实测（350 账号）：`POST /api/feed/seen/315` → `view:pending p:315 = 1`、`view:dup:315:350` TTL 24h；重复 seen 不重复计数；30 秒后 `post.view_count` +1 且 pending 清空；`GET /api/posts/315` 与历史列表都读到 +1
+- `DELETE /api/feed/history` → 列表清空；重新 seen 3 条 → 按最近观看倒序（309,315,316）正确
+- 浏览器 E2E `.devtools/test-views-history.js` 6/6 PASS：移动端播放量行、历史页 18 条渲染、点历史进 `/post/:id`、PC 播放量行、CDP 真实按键空格暂停/恢复、0 控制台错误
+- `.devtools/test-history-entries.js`：移动端抽屉「观看历史」入口与跳转、移动端/PC 宫格统计行与视频播放量均 PASS
+- `.devtools/test-history-covers.js` PASS：18 张封面 18/18 加载成功
+- 回归：`.devtools/test-friends-ui.js` 13/13、`.devtools/test-friends-dot.js` 4/4（先把 Redis seen 值改小构造出新动态，跑完自动写回）
+
+
+## 2026-10-08 朋友动态改成沉浸式流（按好友发布时间倒序、不含自己）
+
+### 后端
+- `FeedService.friendsFeed()`：不再把"自己"塞进好友集合，只返回互关好友的 `PUBLISHED/PUBLIC` 作品；好友集合为空时直接返回空页（避免 `IN ()` 的非法 SQL）
+- 排序沿用创建时间倒序 + id 倒序，游标分页，翻页不重复
+- 接口校验：350 账号拿到 8 条（作者只有彭于烨）；347 账号拿到 1 条（作者 361），自己的作品 0 条；limit=3 翻两页共 6 条无重复、时间严格递减
+
+### 前端
+- `stores/feed.js`：新增 `mode = 'friends'` 与 `loadFriendsFirstPage()`；`loadMore()` 增加朋友动态分支（复用 `fetchFriendsFeed`）
+- 新增路由 `/friends/feed`（复用 `FeedView.vue`：移动端竖屏吸附流，PC 渲染 PcFeedCard）
+- `FeedView.vue`：
+  - `loadFeedForQuery()` 识别 `route.name === 'friends-feed'`，进入/刷新时加载朋友动态
+  - 顶部返回条支持朋友动态（标题「朋友动态」）；`onBack()` 回朋友页（有历史走 back，否则 replace('/friends')）
+  - 空状态文案、`retryFeed()`、`goHome()` 的 scoped 判断都补上 friends
+  - 底部导航在朋友动态里高亮「朋友」
+  - 直接打开/刷新 `/friends/feed` 也会清朋友红点（先 `refreshFriendsUnread()` 再 `clearFriendsDot()`，避免与开机轮询抢时序）
+- `stores/notification.js` 新增 `clearFriendsDot()`；`FriendsView.vue` 改用 store action（删掉本地重复实现和不再使用的 `markFriendsSeen` 导入）
+- `FriendsView.vue`：移动端点「朋友动态」直接进 `/friends/feed`（不再用宫格）；PC 保留宫格不变；空状态文案更新
+
+### 验证
+- 新增 `.devtools/test-friends-immersive.js` 10/10 PASS：Tab 正常、移动端跳 `/friends/feed`、卡片 8 张且非宫格、返回条标题「朋友动态」、作者只有好友、底部导航高亮、`scroll-snap-type: y mandatory` 且卡高=视口高、可滑到第二张、返回回朋友页、PC 仍宫格
+- 新增 `.devtools/test-friends-feed-play.js` 5/5 PASS：滑到视频卡自动播放（t=4.5s）、显示播放量、作者=好友、观看记录写入 Redis、直接打开朋友动态即清红点（seen 300→316）
+- 更新 `.devtools/test-friends-ui.js` 移动端断言（动态 Tab 现在进沉浸流）→ 13/13 PASS
+- 回归：`.devtools/test-friends-dot.js` 4/4、`.devtools/test-views-history.js` 7/7、`npm run build` 通过
+
+### 补充：朋友动态返回位置记忆
+- `saveHomeResume()` / `takeHomeResume()` 增加可选 key 参数，新增 `sg_friends_resume`（sessionStorage），与首页的位置记忆互不干扰
+- `onBeforeRouteLeave`：离开 `/friends/feed` 时按首页同样方式记住当前作品 / 播放进度 / 封面帧
+- 朋友动态分支消费该记录：`locatePost(postId, index)` + `resumeSeek`，从个人主页返回直接回到刚才那条并续播
+- 验证：`.devtools/test-friends-feed-resume.js` 4/4 PASS（滑到第 4 张视频 → 点头像进 `/user/347` → 返回仍是第 4 张、视频从 4s 续到 8.7s、resume key 已消费）；`test-friends-immersive.js` 复跑 10/10；`npm run build` 通过
+
+
+## 2026-10-08 PC 端补上「朋友」入口（顶栏导航）
+
+### 改动
+- `frontend/src/views/FeedView.vue` PC 迷你顶栏 `.p-topbar` 新增「朋友」按钮，位置在「首页」之后，点击进入 `/friends`
+  - 未登录时先跳 `/login`（和消息/我的同样的处理）
+- 顶栏高亮改为动态：`pcActive` 计算属性 —— 朋友动态流（`route.name === 'friends-feed'`）高亮「朋友」，其余（首页流 / 他人主页流 / 点赞流 / 单作品页）高亮「首页」（原来是写死首页常亮）
+- 「朋友」按钮带未读红点：复用 `notification.friendsUnread`，新增 `.p-dot`（深色胶囊顶栏版本，7px 圆点、无白边，靠 padding 区不压字）
+
+### 验证
+- 新增 `.devtools/test-pc-topbar-friends.js` 13/13 PASS（1400×900）：顶栏标签顺序 首页/朋友/搜索/发布/消息/我的、首页高亮、朋友未高亮、红点在朋友按钮内、顶栏宽度未变形、点击朋友跳 `/friends`、朋友页 PC 顶栏渲染、朋友页无底部导航、`/friends/feed` 下「朋友」高亮且「首页」不高亮、进入后红点清除、点「首页」回 `/feed` 且高亮
+  - 红点用 Redis 造数据：把 `feed:friends:seen:350` 置 1 → 红点出现；进入朋友动态后 Redis 写回 316（最新好友作品 id），红点消失
+- 回归：`.devtools/test-friends-ui.js` 13/13、`test-friends-immersive.js` 10/10、`test-friends-feed-play.js` 5/5、`test-friends-feed-resume.js` 4/4、`test-friends-dot.js` 4/4（顺手把该脚本改成自己准备 Redis 前置数据，不再依赖残留状态）、`npm run build` 通过
+- 已知无关失败：`test-pc-backbar.js` 因手机号 `13800000003` 触发短信频控（"发送太频繁"）拿不到 token 而中断，与本次改动无关
+
+## 2026-10-08 存储层可插拔化 + 阿里云短信接入（为 OSS 与真实短信做准备）
+
+### 背景
+部署前要把对象存储从本机 MinIO 换成阿里云 OSS、把 mock 短信换成真实短信通道。先把代码改成可切换，OSS/短信参数到位后只改配置即可。
+
+### 存储层重构（MinIO / OSS 可切换）
+- `StorageService` 接口去掉 MinIO 类型泄漏：`stat/open` 不再 `throws io.minio.errors.ErrorResponseException`，改为统一的 `StorageException`（带 `notFound` 标记）
+- 新增 `StorageException`：`notFound()` / `failure()`，上层 `MediaController` 只按 `isNotFound()` 决定 404 还是 502
+- `presignedGetUrl` 改名 `publicUrl`：它本来就是"对象名 -> 浏览器可访问地址"，换 OSS 后语义更准（6 个 Service、11 处调用点同步改名）
+- `MinioStorageService` 加 `@ConditionalOnProperty(app.storage.type=minio, matchIfMissing=true)`，内部把 MinIO 错误翻译成 `StorageException`
+- 新增 `OssStorageService`（`app.storage.type=oss`）：
+  - 双客户端：`presignClient` 用公网 endpoint 生成浏览器直传预签名（内网地址浏览器访问不到）；`dataClient` 用内网 endpoint，转码读写走内网免流量费
+  - `publicUrl()` 直接返回 OSS/CDN 公网地址 —— **媒体字节不再经过应用服务器**
+  - `public-base-url` 可覆盖，以后接 CDN 只改这一项
+- `StorageProperties` 扩展：`type` + `oss{endpoint, internal-endpoint, public-base-url, access-key-id, access-key-secret, bucket}`
+- `application.yml`：新增 `STORAGE_TYPE` 与 `OSS_*` 环境变量
+- 数据库里存的一直是裸 object key（`videos/315/xxx.mp4`），所以**老数据零迁移**：切 OSS 只需把对象同步过去，DB 不用动
+
+### 短信改造
+- `SmsProperties` 增加 `aliyun{access-key-id, access-key-secret, sign-name, template-code, endpoint}` 与 `mockProvider()`
+- 新增 `AliyunSmsProvider`（`app.sms.provider=aliyun`）：Dysmsapi SDK，连接/读取超时各 3s；错误码翻译成人话（`isv.BUSINESS_LIMIT_CONTROL` -> "发送太频繁" 等）；手机号日志脱敏，验证码不落日志
+- **安全收口**：固定验证码 `SMS_MOCK_CODE` 现在只在 `provider=mock` 时生效；真实通道下即使误配也会被忽略并打 WARN（原来只要配了就是 123456，生产会全站固定码）
+- **失败回滚**：短信通道调用失败时，回滚本次写入的验证码 / 冷却 / 小时计数，用户可以立刻重试（原来会出现"验证码已存、短信没发、还被冷却 60 秒"）
+
+### 验证
+- `mvn compile` 通过；新增 `SmsSendFailureTest` 3/3（失败回滚、mock 码被忽略、小时计数回退），`SmsCodeServiceTest` 4/4、`SmsCodeHourlyLimitTest` 1/1
+- 全量 `mvn test`：62 个用例，5 个失败全部**在 HEAD 上同样失败**（用 `git worktree` 拉 HEAD 单独复验确认），与本次改动无关
+- 存储回归：`test-media-regression.js` 6/6（媒体地址仍是 `/api/media/`、首屏媒体加载、视频播放、无 4xx/5xx）；`test-friends-immersive.js` 10/10、`test-views-history.js` 7/7
+- 手工接口验证：存在对象 200（2.9MB）、不存在对象 404（新异常映射生效）、Range 请求 206
+
+### 工具
+- `.devtools/start-all.ps1` 支持加载 `.devtools/oss.env`（每行 KEY=VALUE，已 gitignore），切 OSS / 真实短信只改这一个文件
+- 新增 `.devtools/oss.env.example` 模板（含每一项的含义与取值位置）
+
+### 遗留
+- **Maven 测试跑在开发库上**：本次全量测试往 dev 库插了 2 条测试作品（318/319）和几十个测试用户，已删掉那 2 条作品；建议后续给测试单独建库（`application-test.yml`），否则测试会污染甚至删掉真实数据
+- 未知路径现在仍返回 500（`NoResourceFoundException` 被全局兜底），待修
+## 2026-10-08 OSS 迁移打通（媒体直连 + 浏览器直传）
+
+### 桶配置（shiguang-bucket，华北2 北京）
+- ACL 公共读：媒体地址可直接给浏览器，字节流不再过应用服务器
+- CORS：来源 `localhost:5173` / `localhost:4173` / `123.57.252.14`，方法 PUT/POST/GET/HEAD，**AllowedHeaders=`*`**，ExposeHeaders ETag，maxAge 600
+- 生命周期：`source/` 前缀 1 天自动清理（上传中断留下的源文件兜底）
+- 数据迁移：MinIO 43 个对象 117.26 MB 原 key 全量同步，校验 `MISSING=0 SIZE_MISMATCH=0`
+
+### 顺手修掉的 3 个真 bug（都被 MinIO 的宽容掩盖了）
+- **前导斜杠**：`MediaController` 的 `{*objectName}` 会把路径前导斜杠一起捕获（`/videos/315/x.mp4`）。MinIO 会归一化 URL 里的 `//` 所以一直没暴露，OSS 严格按 key 匹配就 404。新增 `normalizeObjectName()`：剥掉前导斜杠 + 拒绝空段 / `.` / `..`（顺带堵住目录穿越）
+- **V1 签名带 Content-Type**：OSS 的 V1 签名把 Content-Type 算进签名字符串，而 SDK 的 `generatePresignedUrl` 不签它，浏览器直传带 `Content-Type: video/mp4` 就 `SignatureDoesNotMatch`（curl 不带这个头反而 200，很迷惑）。改用 `GeneratePresignedUrlRequest.setContentType(...)`
+- **预签名走 http**：endpoint 没写协议时 SDK 默认 http，生产前端是 https，直传会被浏览器按混合内容拦掉。`StorageProperties` 新增 `resolvedPresignEndpoint()/resolvedDataEndpoint()` 强制 https
+
+### CORS 预检 403（部署前必须知道）
+桶 CORS 规则漏了 AllowedHeaders，浏览器直传会在 OPTIONS 预检就被 OSS 拒掉（`CORSResponse`），**而 curl 能传成功** —— 只看命令行很容易误判成"直传没问题"。已在 `setupBucket` 里补 `setAllowedHeaders(List.of("*"))`；来源白名单可用 `-Doss.corsOrigins=https://域名` 覆盖（别写 `*`，预签名地址本身就是凭证）
+
+### 验证
+- 媒体代理：全量 200 / 2,904,418B、Range 206 / 1024B、不存在对象 404、编码斜杠 400
+- **浏览器 E2E 发布**（新增 `.devtools/test-oss-publish.js`，6/6）：选文件 → 预签名 → OPTIONS 200 → PUT 200 直传 OSS → 填标题 → 发布 → 转码 → 落地页自动播放 OSS 视频
+- 转码链路：测试作品转码产出 `videos/{id}/xxx.mp4` + `covers/{id}/xxx.jpg`，**源文件转码后自动清理**（回查 404）
+- 回归：`test-media-regression.js` 6/6（断言从"必须走 /api/media/"改成"OSS 域名或 /api/media/"，并把"当前卡片在播放"改成滚动到视频卡片再断言，避免首页随机顺序导致误报）、`test-friends-immersive.js` 10/10、`test-views-history.js` 7/7
+- 单测：`SmsSendFailureTest` 3/3、`SmsCodeServiceTest` 4/4、`SmsCodeHourlyLimitTest` 1/1、`ContentFlowTest` 6/6
+
+### 工具
+- `OssOpsTool` 新增 `listPrefix`（`-Doss.prefix=videos/2026-10-08/`）和 `deleteKeys`（`-Doss.keys=a,b`），用来查 / 清测试残留对象
+- 本轮测试产生的临时对象与测试作品（364/365）已全部清理
+
+### 遗留
+- 部署到北京 ECS 时把 `OSS_INTERNAL_ENDPOINT` 填成 `oss-cn-beijing-internal.aliyuncs.com`（本机不通，留空走公网）
+- 域名定了之后重跑 `setupBucket` 并带 `-Doss.corsOrigins=https://你的域名`
+
+### 手机端视频全部加载不了（CORS 拆分修复）
+- 现象：PC（localhost:5173）视频正常，手机用局域网地址打开首页，视频全黑/加载不出来，图片正常
+- 根因：`FeedItem.vue` 的 `<video crossorigin="anonymous">`（抓帧做"返回续播快照"用）会把播放变成 **CORS 请求**，而 OSS CORS 规则只放行了 `localhost:5173`，手机的 Origin 是 `http://192.168.x.x:5173`，响应没有 `Access-Control-Allow-Origin` 就直接加载失败。`<img>` 没这个属性，所以图片照常
+- 修复：CORS 拆成两条规则 —— **读取** GET/HEAD 允许 `*`（媒体本来就公共读，放开来源不泄露东西），**上传** PUT/POST 仍只放行白名单来源
+- 验证：手机来源 GET 返回 `ACAO: *`；白名单来源 PUT 预检 200、陌生来源 PUT 预检仍 403（`*` 规则不会把上传限制吃掉）；`test-lan-mobile.js` 8/8（用局域网 Origin 跑完整首页播放）
+- 教训：以后改 CORS 一定要用**真实来源**测，命令行 curl 不带 Origin 时一切正常，很容易误判
+
+### 顺手清掉一个污染数据（Maven 测试写进了开发库）
+- 首页刷到一条"海边日落"，两张图都是 404：`images/a.jpg` / `images/b.jpg`，是 `ContentFlowTest` 用假 key 建的真实作品（user 435），被 OSS 的 ORB 拦成 `net::ERR_BLOCKED_BY_ORB`
+- 已按正常接口（mock 验证码登录 435）删掉该作品，并做了一次全量对账：OSS 45 个对象 vs DB 27 处引用，**缺失 0**
+- **只要还跑 `mvn test` 就还会再发生**：测试库隔离（`shiguang_test`）还没做，见前面的遗留项
+
+### 上传白名单补局域网段（手机端能看不能发布）
+- 实测：手机端（Origin `http://192.168.0.100:5173`）发视频，PUT 预检被拒 403 —— 读取放开了，但上传白名单只有 localhost，所以手机上"能刷不能发"
+- 修复：上传白名单补 `http://192.168.*:5173`（OSS 的 AllowedOrigin 只允许一个 `*`，写 `192.168.*` 可以跨到 192.168.x.y）
+- 当前上传白名单：`localhost:5173` / `localhost:4173` / `123.57.252.14` / `192.168.*:5173`
+- 验证：局域网来源 PUT 预检 200、陌生来源与未登记域名仍 403；`test-lan-publish.js`（局域网 Origin 走完整发布流程）6/6，上传直传 OSS 成功并正常播放
+- 部署提醒：绑域名后要把域名加进白名单（`-Doss.corsOrigins=https://域名,...`），否则线上"能看不能发"
+
+### 本地 MinIO 正式下线
+- 运行时早已切到 OSS（`OSS 存储已启用: bucket=shiguang-bucket`），MinIO 只是"同步后没删"的本地副本：数据目录 117.3 MB + 程序 107.88 MB
+- 已确认无运行时依赖：只有 `MinioStorageService`（`app.storage.type=minio` 时才装配）和运维工具引用它
+- 动作：停掉 MinIO 进程 → 删除 `.devtools\minio-data`（117.3 MB）和 `.devtools\minio`（107.88 MB），9000/9001 已释放
+- `start-dev.ps1` 里的 MinIO 启动行已注释（附恢复说明），一键启动不会再拉起它
+- 回归：媒体 6/6、局域网手机 8/8、朋友页 10/10、观看历史 7/7
+- 注意：`STORAGE_TYPE` 默认值仍是 `minio`，所以**必须加载 `.devtools\oss.env`**（start-all.ps1 会自动加载）；手动 `mvnw spring-boot:run` 忘加载的话会退回 MinIO，而本机 MinIO 已经没了，媒体会全挂
+
+### 测试 token 过期（排障备忘）
+- `.devtools/logs/t350.txt`、`t347.txt` 是 access token，**有效期 2 小时**，过期后浏览器类测试会停在 `/login`（`/api/posts/feed` 是公开接口，用 curl 测只会看到 200，容易误判成"token 没问题"）
+- 刷新方式：`sms-code`（mock 码 123456）→ `login` → 取 `data.accessToken` 覆盖对应文件；注意短信有 60 秒冷却、验证码一次性
+- 用"当前登录用户"判活要打 `/api/user/me`（单数），不是 `/api/users/me`

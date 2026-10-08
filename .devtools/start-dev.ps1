@@ -19,8 +19,9 @@ function Start-DevService {
 # Redis 6379
 Start-DevService -Name "Redis" -File "$root\redis\redis-server.exe" -Arguments @("$root\redis\redis.windows.conf") -CheckPort 6379
 
-# MinIO 9000 / 9001 (MINIO_API_REQUESTS_MAX 必须显式调高，auto 在本机只给约 4 并发，媒体并发读取会 429)
-Start-DevService -Name "MinIO" -File "$root\minio\minio.exe" -Arguments @("server", "$root\minio-data", "--address", "0.0.0.0:9000", "--console-address", "0.0.0.0:9001") -CheckPort 9000 -EnvVars @{ MINIO_API_REQUESTS_MAX = '10000' }
+# MinIO 已下线（2026-10-08 起对象存储全部走阿里云 OSS，媒体不落本机）
+# 需要临时跑回本地存储时才恢复下面这行，并在 .devtools\oss.env 里把 STORAGE_TYPE 改成 minio：
+# Start-DevService -Name "MinIO" -File "$root\minio\minio.exe" -Arguments @("server", "$root\minio-data", "--address", "0.0.0.0:9000", "--console-address", "0.0.0.0:9001") -CheckPort 9000 -EnvVars @{ MINIO_API_REQUESTS_MAX = '10000' }
 
 # RabbitMQ 5672 (start frontend node when Windows service is unavailable)
 $rmq = Get-NetTCPConnection -LocalPort 5672 -State Listen -ErrorAction SilentlyContinue

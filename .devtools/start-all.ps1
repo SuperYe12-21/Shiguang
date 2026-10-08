@@ -116,6 +116,19 @@ if (-not (Test-Path (Join-Path $frontendDir 'node_modules'))) {
 
 # ---------------- 3. 后端 ----------------
 Write-Step '第 3 步: 启动后端 (8080) ...'
+
+# 生产参数（OSS / 真实短信）写在 .devtools/oss.env，每行 KEY=VALUE，该目录已 gitignore，不会进仓库
+$extraEnv = Join-Path $root 'oss.env'
+if (Test-Path $extraEnv) {
+    Get-Content $extraEnv | Where-Object { $_ -match '^\s*[A-Za-z_][A-Za-z0-9_]*\s*=' -and $_ -notmatch '^\s*#' } | ForEach-Object {
+        $idx = $_.IndexOf('=')
+        $key = $_.Substring(0, $idx).Trim()
+        $value = $_.Substring($idx + 1).Trim().Trim('"')
+        if ($value) { Set-Item -Path "Env:$key" -Value $value }
+    }
+    Write-Step "已加载 $extraEnv（对象存储 / 短信等参数）"
+}
+
 $ffmpeg = Join-Path $root 'ffmpeg\ffmpeg-9.0.1-essentials_build\bin\ffmpeg.exe'
 if (Test-Path $ffmpeg) { $env:FFMPEG_PATH = $ffmpeg } else { $env:FFMPEG_PATH = 'ffmpeg' }
 
