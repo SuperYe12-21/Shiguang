@@ -25,7 +25,7 @@
 | 决策点 | 结论 |
 |---|---|
 | 通知范围 | 作品被点赞、评论被点赞、作品被评论、评论被回复、被关注；自己的操作一律不通知自己 |
-| 折叠规则 | **只有点赞折叠**，按「作品」和「评论」分别永久合并成一行；评论、回复、关注各自独立成行 |
+| 折叠规则 | 点赞按「作品」「评论」分别永久合并成一行；关注对**同一个人只提示最初的一次**（`follow:{actorId}` 唯一键兜底，取关后再关注不重复提示）；评论、回复各自独立成行 |
 | 折叠展示 | 一行最多展示 3 个昵称，其余用「等 N 人」省略 |
 | 取消点赞 | 不产生通知，也不删除已有通知（通知是历史记录，不是实时状态） |
 | 跳转 | 作品被赞/被评论 → 打开作品并展开评论区；回复 → 再展开对应楼层并滚到那条回复（短暂高亮）；新增关注 → 打开对方主页 |
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS `notification` (
     `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `user_id`     BIGINT UNSIGNED NOT NULL COMMENT '接收者',
     `type`        VARCHAR(20)  NOT NULL COMMENT 'LIKE_POST / LIKE_COMMENT / COMMENT_POST / REPLY_COMMENT / FOLLOW',
-    `merge_key`   VARCHAR(64) NULL COMMENT '折叠键：按作品/评论折叠的类型填值并受唯一键约束；不折叠的类型（FOLLOW）为 NULL',
+    `merge_key`   VARCHAR(64) NULL COMMENT '折叠/去重键，受 uk_merge 唯一键约束：post:{id} / comment:{id} / cpost:{id} / reply:{id} / follow:{actorId}',
     `actor_id`    BIGINT UNSIGNED NOT NULL COMMENT '最近一个触发者',
     `actor_count` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '去重后的人数',
     `actor_ids`   VARCHAR(1200) NULL COMMENT '触发者 id 的 JSON 数组，最多 100 个，仅用于去重与折叠展示',
@@ -74,9 +74,11 @@ CREATE TABLE IF NOT EXISTS `notification` (
 | LIKE_COMMENT | `comment:{commentId}` | 是 | 按评论折叠 |
 | COMMENT_POST | `cpost:{commentId}` | 是，但每条评论 id 不同 | 实际不折叠 |
 | REPLY_COMMENT | `reply:{commentId}` | 是，同上 | 实际不折叠 |
-| FOLLOW | NULL | 否 | 不折叠，每次关注都是新行 |
+| FOLLOW | `follow:{actorId}` | 是 | 同一人只留最初一条；重复关注不新建、不刷时间、不重新置未读 |
 
 规则从"依赖 NULL 语义的隐式技巧"变成"一眼能看懂的显式取值"，同时四种折叠类型仍然共用同一个唯一键，不需要分支逻辑。
+
+> 2026-09-18 修正：FOLLOW 最初是 `merge_key = NULL`（每次关注都插新行）。实测发现**反复取关再关注就能把对方通知列表刷屏**（同一人堆出 6 条「XX 关注了你」，最新一条还带红点），与「重复的关注不重复提示」相矛盾。改为 `follow:{actorId}` 并走"已存在就直接返回"的静默分支：不新建、不刷新 `updated_at`、不清 `read_at`，历史重复行由 `db/init/007_m7_follow_notice_dedupe.sql` 收敛为每组最早一条。
 
 ### 去重写入
 
@@ -100,7 +102,7 @@ public record UserFollowedEvent(Long followerId, Long followeeId) {}
 ```
 
 - `LikeService.likePost` 只在 `addMember` 返回 true（点赞状态真的发生了变化）时发布 `PostLikedEvent`；`likeComment` 同理
-- `FollowService.follow` 仅在首次关注成功时发布 `UserFollowedEvent`（重复关注不重复发）
+- `FollowService.follow` 仅在关注状态真正变化时发布 `UserFollowedEvent`（重复关注不发）；接收端再由 `follow:{actorId}` 兜一层，取关后再关注也不重复提示
 - 取消点赞 / 取关不发布事件
 
 ### 通知生成规则
