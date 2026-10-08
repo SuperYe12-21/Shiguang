@@ -102,7 +102,7 @@ public class NotificationService {
             if (comment == null) {
                 return;
             }
-            String summary = summarize(comment.getContent());
+            String summary = summarizeComment(comment);
             if (event.rootId() == null) {
                 Post post = postMapper.selectById(event.postId());
                 if (post != null) {
@@ -119,9 +119,35 @@ public class NotificationService {
     @EventListener
     @Transactional
     public void onUserFollowed(UserFollowedEvent event) {
-        NotificationType type = NotificationType.FOLLOW;
-        guard(type, event.followerId(), event.followeeId(), () ->
-                write(event.followeeId(), type, null, event.followerId(), null, null, null, null));
+        guard(NotificationType.FOLLOW, event.followerId(), event.followeeId(), () ->
+                writeFollowOnce(event.followeeId(), event.followerId()));
+    }
+
+    /**
+     * 关注通知对「同一个人」只提示最初的一次：取关后再关注不再新建、不刷新时间、也不把旧通知重新置为未读。
+     * 否则反复取关/关注就能把对方的通知列表刷屏（同一人堆出几十条「XX 关注了你」）。
+     */
+    private void writeFollowOnce(Long receiverId, Long actorId) {
+        if (receiverId == null || receiverId.equals(actorId)) {
+            return;
+        }
+        String mergeKey = "follow:" + actorId;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            Notification existing = notificationMapper.selectOne(new LambdaQueryWrapper<Notification>()
+                    .eq(Notification::getUserId, receiverId)
+                    .eq(Notification::getMergeKey, mergeKey)
+                    .last("FOR UPDATE"));
+            if (existing != null) {
+                // 已经提示过，保持原样（不重新置未读、不顶到列表最前）
+                return;
+            }
+            try {
+                insertNew(receiverId, NotificationType.FOLLOW, mergeKey, actorId, null, null, null, null);
+                return;
+            } catch (DuplicateKeyException e) {
+                log.debug("关注通知并发插入冲突，忽略重复: user={} actor={}", receiverId, actorId);
+            }
+        }
     }
 
     /**
@@ -371,6 +397,16 @@ public class NotificationService {
         String trimmed = content.trim();
         return trimmed.length() <= CONTENT_SUMMARY_LENGTH
                 ? trimmed : trimmed.substring(0, CONTENT_SUMMARY_LENGTH);
+    }
+
+    /** 纯图片评论摘要显示「[图片]」 */
+    private String summarizeComment(Comment comment) {
+        String text = summarize(comment.getContent());
+        if (text != null && !text.isBlank()) {
+            return text;
+        }
+        boolean hasImage = comment.getImagesObject() != null && !comment.getImagesObject().isEmpty();
+        return hasImage ? "[图片]" : null;
     }
 
     // ---------------- 工具 ----------------
