@@ -511,3 +511,46 @@
 - `.devtools/logs/t350.txt`、`t347.txt` 是 access token，**有效期 2 小时**，过期后浏览器类测试会停在 `/login`（`/api/posts/feed` 是公开接口，用 curl 测只会看到 200，容易误判成"token 没问题"）
 - 刷新方式：`sms-code`（mock 码 123456）→ `login` → 取 `data.accessToken` 覆盖对应文件；注意短信有 60 秒冷却、验证码一次性
 - 用"当前登录用户"判活要打 `/api/user/me`（单数），不是 `/api/users/me`
+
+### 生产配置收口（prod profile 落地 + 一个藏得很深的 dev 坑）
+- `application.yml` 的 `spring.profiles.active` 改成 `${SPRING_PROFILES_ACTIVE:dev}`；CORS 来源抽成 `app.cors.allowed-origins`（dev 默认 `*`，prod 收紧）
+- 新增 `application-prod.yml`：密钥类变量【一律不给默认值】，缺了直接启动失败并报出变量名，而不是悄悄退回 dev 弱口令；`SMS_PROVIDER` 默认 `aliyun`、`STORAGE_TYPE` 默认 `oss`、关掉 springdoc、日志落文件 + 轮转
+- `GlobalExceptionHandler` 补 `NoResourceFoundException`(404) 和 `HttpRequestMethodNotSupportedException`(405)：以前访问不存在的路径（包括被关掉的 swagger 地址）会被兜底成 500
+- prod 实测：`/swagger-ui/index.html`、`/v3/api-docs`、未知路径都返回 404；`POST /api/posts/feed` 返回 405；feed 正常 200；CORS 只放行 `http://123.57.252.14`，陌生来源没有 ACAO 头
+- 新增 `.devtools/oss.env.example`（纳入版本管理）：服务器上要填的全部变量清单，逐项写明不填的后果
+- 顺手清掉 MinIO 时代的死代码：`http.js` 里的 `fixMediaHost`、`vite.config.js` 里的 `/shiguang-media` 代理
+
+### 一键启动脚本静默丢变量（dev 其实一直跑在 MinIO 实现上）
+- 现象：dev 启动后 feed 返回的媒体地址是相对的 `/api/media/...`（MinIO 实现的特征），老素材整片 502
+- 根因：`oss.env` 是无 BOM 的 UTF-8 且含中文注释，`start-all.ps1` 用 `Get-Content` 读它。Windows PowerShell 5.1 默认按 ANSI(GBK) 解码，中文注释末尾的多字节序列会把**换行一起吃掉**，紧跟在注释后面的 `STORAGE_TYPE=oss` 被并进上一行注释，于是静默没被加载 → `app.storage.type` 退回默认 `minio`
+- 修复：改成 `[System.IO.File]::ReadAllLines($path, [System.Text.Encoding]::UTF8)`（先按行切分再解码，任何解码异常都不会再吞换行），并在加载后回显 `存储=oss / 短信=`
+- 顺带给 `start-dev.ps1` 补上 UTF-8 BOM（同类问题的预防）
+- 复验：启动日志出现 `OSS 存储已启用`，feed 返回 `https://shiguang-bucket...` 绝对地址；媒体 6/6、朋友页 10/10、观看历史 7/7
+- 教训：脚本读"带中文的配置文件"必须显式指定编码；有默认值的配置项（`type: ${STORAGE_TYPE:minio}`）出问题时不会报错，只在功能上表现得很怪
+
+### 真实短信改用「号码认证服务·短信认证」（pnvs），绕开签名资质
+- 背景：标准短信服务的签名要人工审核，个人账号没有备案域名 / App / 小程序时基本过不了审
+- 核到的官方事实（来自阿里云 OpenAPI 元数据，不是猜的）：
+  - `SendSmsVerifyCode` 的 `SignName` 描述原文：暂不支持使用自定义签名，请使用【系统赠送的签名】，可在“赠送签名配置”页面选择
+  - `TemplateCode` 描述原文：参数 SignName 选择赠送签名时，必须搭配【赠送模板】下发短信，示例值形如 `100001`
+  - 即：不申请签名、不申请模板、不走人工审核；顺带自带验证码长度 / 有效期 / 频控 / 失败时自动换签名重试
+  - SDK：`com.aliyun:dypnsapi20170525:2.0.0`（与 dysmsapi 同属 tea-openapi 体系，Maven 解析无冲突）
+- 代码改动（业务逻辑零改动，因为早就留了 `SmsProvider` 接口）：
+  - 新增 `PnvsSmsProvider`（`app.sms.provider=pnvs` 时装配），验证码仍由我们自己生成、存 Redis、自己校验
+  - `SmsProperties` 增加 `pnvs` 配置块；`application.yml` 增加对应项；`application-prod.yml` 默认 provider 由 `aliyun` 改为 `pnvs`
+  - 赠送模板的变量个数不固定，所以 `template-param` 做成可配置（默认 `{"code":"{code}","min":"{min}"}`），变量对不上时按模板原文改这一项即可
+- 实测：
+  - 用假 AK 起实例 → 日志打出 `阿里云短信认证已启用: endpoint=dypnsapi.aliyuncs.com`；调接口后阿里云返回 `404 Specified access key is not found`，说明请求确实打到了阿里云、V3 签名链路走通，且异常被正确降级成用户友好提示
+  - 故意不配 key 起实例 → 启动直接失败并报出：`app.sms.provider=pnvs 时必须配置 access-key-id / access-key-secret / sign-name / template-code`
+  - dev 回归：mock 通道仍正常（验证码 123456 登录成功）
+- 代价（明确记下来）：短信里显示的签名由阿里云指定，不是「拾光」；赠送模板文案不可改。等以后有备案域名或小程序，再申请自己的签名换回 `SMS_PROVIDER=aliyun`
+- 待办：控制台里「赠送签名配置」「赠送模板配置」各选一个，把签名名称和模板 CODE 填进 `.devtools/oss.env`
+
+### 真实短信链路跑通（真机验证）
+- 控制台选定的赠送资源：签名「速通互联验证服务」、模板 `100001`
+- 模板文案：`您的验证码为${code}。尊敬的客户，以上验证码${min}分钟内有效，请注意保密，切勿告知他人`
+  → 变量正好是 `${code}` + `${min}`，与代码里的默认 template-param 一致，未做额外配置；`min` 取 `SMS_CODE_EXPIRE_MINUTES`（5），与 Redis 里验证码的 TTL 同源
+- 真机结果：本地临时以 `SMS_PROVIDER=pnvs` 起实例，用户在自己手机上完成"发送验证码 → 收到 → 登录"全流程；后端日志 `短信认证已发送 phone=150****1015 bizId=538912991543054626^0`
+- 验证完已把本地切回 mock（`SMS_PROVIDER` 留空），避免以后跑自动化测试时误发真实短信；日志确认回落为 `【拾光短信-Mock】`
+- 服务器上无需额外设置：`application-prod.yml` 里 provider 默认就是 `pnvs`
+- 遗留提醒：短信里显示的签名是阿里云赠送的「速通互联验证服务」，不是「拾光」；等以后有备案域名或小程序，再申请自己的签名并切 `SMS_PROVIDER=aliyun`

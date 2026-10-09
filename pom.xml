@@ -21,6 +21,8 @@
         <minio.version>8.5.17</minio.version>
         <aliyun-oss.version>3.17.4</aliyun-oss.version>
         <aliyun-sms.version>2.0.24</aliyun-sms.version>
+        <!-- 阿里云号码认证服务·短信认证 SDK：签名和模板用阿里云赠送的，不需要申请资质 -->
+        <aliyun-pnvs.version>2.0.0</aliyun-pnvs.version>
     </properties>
     <dependencies>
         <dependency>
@@ -100,6 +102,12 @@
             <groupId>com.aliyun</groupId>
             <artifactId>dysmsapi20170525</artifactId>
             <version>${aliyun-sms.version}</version>
+        </dependency>
+        <!-- 阿里云号码认证服务：短信认证通道（app.sms.provider=pnvs），签名/模板用阿里云赠送的 -->
+        <dependency>
+            <groupId>com.aliyun</groupId>
+            <artifactId>dypnsapi20170525</artifactId>
+            <version>${aliyun-pnvs.version}</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
