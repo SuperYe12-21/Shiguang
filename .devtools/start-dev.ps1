@@ -1,4 +1,4 @@
-# Shiguang local dev services (Redis / MinIO / RabbitMQ)
+﻿# Shiguang local dev services (Redis / MinIO / RabbitMQ)
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 

@@ -2,7 +2,8 @@ spring:
   application:
     name: shiguang
   profiles:
-    active: dev
+    # 本地开发默认 dev；服务器上用 SPRING_PROFILES_ACTIVE=prod 覆盖
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   jackson:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss
@@ -25,6 +26,9 @@ jwt:
   refresh-expire-days: ${JWT_REFRESH_EXPIRE_DAYS:14}
 
 app:
+  # 允许跨域调用后端的来源（多个用逗号分隔）：dev 默认全放，prod 在 application-prod.yml 里收紧
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
   sms:
     provider: ${SMS_PROVIDER:mock}
     # 仅 provider=mock 时生效；换成真实通道后即使误配也不会被真人用上（SmsCodeService 会忽略并告警）
@@ -38,6 +42,19 @@ app:
       sign-name: ${SMS_SIGN_NAME:}
       template-code: ${SMS_TEMPLATE_CODE:}
       endpoint: ${SMS_ENDPOINT:dysmsapi.aliyuncs.com}
+    # 号码认证服务·短信认证：签名/模板用阿里云「赠送」的，不需要申请资质、不走人工审核
+    pnvs:
+      access-key-id: ${SMS_ACCESS_KEY_ID:}
+      access-key-secret: ${SMS_ACCESS_KEY_SECRET:}
+      # 控制台「赠送签名配置」里选中的签名名称（形如：恒创联众）
+      sign-name: ${SMS_SIGN_NAME:}
+      # 控制台「赠送模板配置」里选中的模板 CODE（形如：100001）
+      template-code: ${SMS_TEMPLATE_CODE:}
+      # 赠送模板的变量格式不固定，按模板原文调整；{code}/{min} 会被替换成实际值
+      template-param: ${SMS_PNVS_TEMPLATE_PARAM:}
+      # 方案名称，不填即「默认方案」
+      scheme-name: ${SMS_PNVS_SCHEME_NAME:}
+      endpoint: ${SMS_PNVS_ENDPOINT:dypnsapi.aliyuncs.com}
   storage:
     # minio=本地开发；oss=生产（阿里云对象存储，媒体直连 OSS，字节流不经过应用服务器）
     type: ${STORAGE_TYPE:minio}

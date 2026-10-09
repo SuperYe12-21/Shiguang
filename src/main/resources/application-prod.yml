@@ -1,0 +1,62 @@
+# ============================================================
+# 生产环境配置（服务器上使用）：SPRING_PROFILES_ACTIVE=prod
+#
+# 设计原则：密钥类配置【一律不写默认值】——缺了就直接启动失败并报出变量名，
+# 而不是悄悄退回 dev 的弱口令 / 本地存储。"看着能跑、其实在裸奔"才是最危险的。
+# 完整变量清单见 .devtools/oss.env.example
+# ============================================================
+spring:
+  datasource:
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:shiguang}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  rabbitmq:
+    host: ${RABBIT_HOST:127.0.0.1}
+    port: ${RABBIT_PORT:5672}
+    username: ${RABBIT_USERNAME}
+    password: ${RABBIT_PASSWORD}
+
+jwt:
+  # 必须显式配置，生成方式：openssl rand -base64 48
+  secret: ${JWT_SECRET}
+
+app:
+  cors:
+    # 只允许站点自己的来源调后端（反代后是同源，正常用不到跨域；这条防的是页面被挂到别的站点上顺手调接口）
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://123.57.252.14}
+  sms:
+    # 生产默认走真实通道：忘配 SMS_PROVIDER 也不会退化成"验证码只打日志"
+    # pnvs=号码认证服务·短信认证（用阿里云赠送的签名/模板，无需资质，当前走这条）
+    # aliyun=标准短信服务（签名/模板要自己申请并过审，短信里能显示自己的品牌）
+    provider: ${SMS_PROVIDER:pnvs}
+  storage:
+    # 生产默认 oss：忘配 STORAGE_TYPE 也不会退回本地 MinIO
+    type: ${STORAGE_TYPE:oss}
+  transcode:
+    # Linux 服务器上的 ffmpeg
+    ffmpeg-path: ${FFMPEG_PATH:/usr/bin/ffmpeg}
+
+# 线上不暴露接口文档，免得被扫描器盯上
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  file:
+    # 落文件 + 轮转：服务重启后还能倒查问题（相对路径 = 启动目录下）
+    name: ${LOG_PATH:logs/shiguang.log}
+  logback:
+    rollingpolicy:
+      max-file-size: 50MB
+      total-size-cap: 1GB
+      max-history: 14
+  level:
+    root: INFO
+    com.shiguang: INFO

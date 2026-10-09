@@ -120,13 +120,18 @@ Write-Step '第 3 步: 启动后端 (8080) ...'
 # 生产参数（OSS / 真实短信）写在 .devtools/oss.env，每行 KEY=VALUE，该目录已 gitignore，不会进仓库
 $extraEnv = Join-Path $root 'oss.env'
 if (Test-Path $extraEnv) {
-    Get-Content $extraEnv | Where-Object { $_ -match '^\s*[A-Za-z_][A-Za-z0-9_]*\s*=' -and $_ -notmatch '^\s*#' } | ForEach-Object {
-        $idx = $_.IndexOf('=')
-        $key = $_.Substring(0, $idx).Trim()
-        $value = $_.Substring($idx + 1).Trim().Trim('"')
+    # 必须显式按 UTF-8 读：oss.env 是无 BOM 的 UTF-8 且含中文注释，
+    # Windows PowerShell 5.1 会按 ANSI 解码并吞掉换行，导致紧随注释后面的 KEY=VALUE 被并进注释、静默丢失。
+    $envLines = [System.IO.File]::ReadAllLines($extraEnv, [System.Text.Encoding]::UTF8)
+    foreach ($line in $envLines) {
+        if ($line -match '^\s*#') { continue }
+        if ($line -notmatch '^\s*[A-Za-z_][A-Za-z0-9_]*\s*=') { continue }
+        $idx = $line.IndexOf('=')
+        $key = $line.Substring(0, $idx).Trim()
+        $value = $line.Substring($idx + 1).Trim().Trim('"')
         if ($value) { Set-Item -Path "Env:$key" -Value $value }
     }
-    Write-Step "已加载 $extraEnv（对象存储 / 短信等参数）"
+    Write-Step "已加载 $extraEnv（存储=$($env:STORAGE_TYPE) / 短信=$($env:SMS_PROVIDER)）"
 }
 
 $ffmpeg = Join-Path $root 'ffmpeg\ffmpeg-9.0.1-essentials_build\bin\ffmpeg.exe'
