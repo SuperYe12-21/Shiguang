@@ -3,6 +3,7 @@ package com.shiguang.content;
 import com.shiguang.common.BizException;
 import com.shiguang.content.transcode.TranscodePublisher;
 import com.shiguang.interaction.CommentService;
+import com.shiguang.interaction.FavoriteService;
 import com.shiguang.interaction.LikeService;
 import org.springframework.context.ApplicationEventPublisher;
 import com.shiguang.storage.StorageService;
@@ -46,6 +47,9 @@ class PostServiceTest {
 
     @Mock
     private LikeService likeService;
+
+    @Mock
+    private FavoriteService favoriteService;
 
     @Mock
     private CommentService commentService;
@@ -241,5 +245,111 @@ class PostServiceTest {
         postService.markPublished(1L, "videos/out.mp4", "covers/c.jpg");
 
         verify(postMapper, never()).updateById(any(Post.class));
+    }
+
+    private static Post publishedPost() {
+        Post post = new Post();
+        post.setId(1L);
+        post.setUserId(7L);
+        post.setType(PostType.IMAGE);
+        post.setVisibility(PostVisibility.PUBLIC);
+        post.setStatus(PostStatus.PUBLISHED);
+        post.setLikeCount(0);
+        post.setCommentCount(0);
+        return post;
+    }
+
+    @Test
+    void adminBlock_setsBlockedStatusAndReason() {
+        Post post = publishedPost();
+        when(postMapper.selectById(1L)).thenReturn(post);
+
+        PostVO vo = postService.adminBlock(1L, "  违规内容  ");
+
+        ArgumentCaptor<Post> captor = ArgumentCaptor.forClass(Post.class);
+        verify(postMapper).updateById((Post) captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(PostStatus.BLOCKED);
+        assertThat(captor.getValue().getBlockReason()).isEqualTo("违规内容");
+        assertThat(vo.getStatus()).isEqualTo(PostStatus.BLOCKED);
+    }
+
+    @Test
+    void adminBlock_isIdempotentWhenAlreadyBlocked() {
+        Post post = publishedPost();
+        post.setStatus(PostStatus.BLOCKED);
+        post.setBlockReason("第一次的原因");
+        when(postMapper.selectById(1L)).thenReturn(post);
+
+        PostVO vo = postService.adminBlock(1L, "第二次的原因");
+
+        assertThat(vo.getBlockReason()).isEqualTo("第一次的原因");
+        verify(postMapper, never()).updateById(any(Post.class));
+    }
+
+    @Test
+    void adminBlock_rejectsNotPublishedPost() {
+        Post post = publishedPost();
+        post.setStatus(PostStatus.PROCESSING);
+        when(postMapper.selectById(1L)).thenReturn(post);
+
+        assertThatThrownBy(() -> postService.adminBlock(1L, "x"))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("只有已发布的作品才能下架");
+        verify(postMapper, never()).updateById(any(Post.class));
+    }
+
+    @Test
+    void adminUnblock_restoresPublishedAndClearsReason() {
+        Post post = publishedPost();
+        post.setStatus(PostStatus.BLOCKED);
+        post.setBlockReason("违规");
+        when(postMapper.selectById(1L)).thenReturn(post);
+
+        PostVO vo = postService.adminUnblock(1L);
+
+        ArgumentCaptor<Post> captor = ArgumentCaptor.forClass(Post.class);
+        verify(postMapper).updateById((Post) captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(PostStatus.PUBLISHED);
+        assertThat(captor.getValue().getBlockReason()).isEmpty();
+        assertThat(vo.getStatus()).isEqualTo(PostStatus.PUBLISHED);
+    }
+
+    @Test
+    void adminUnblock_rejectsNotBlockedPost() {
+        when(postMapper.selectById(1L)).thenReturn(publishedPost());
+
+        assertThatThrownBy(() -> postService.adminUnblock(1L))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("不是已下架状态");
+    }
+
+    @Test
+    void adminDelete_removesOthersPostAndCleansUp() {
+        Post post = publishedPost();
+        post.setUserId(99L);
+        post.setVideoObject("videos/out.mp4");
+        post.setCoverObject("covers/c.jpg");
+        when(postMapper.selectById(1L)).thenReturn(post);
+
+        postService.adminDelete(1L);
+
+        verify(postMapper).deleteById((Serializable) 1L);
+        verify(storageService).deleteObject("videos/out.mp4");
+        verify(storageService).deleteObject("covers/c.jpg");
+        verify(likeService).cleanupPost(1L);
+        verify(favoriteService).cleanupPost(1L);
+        verify(commentService).cleanupPost(1L);
+    }
+
+    @Test
+    void blockedPostDetail_hiddenFromOthers() {
+        Post post = publishedPost();
+        post.setStatus(PostStatus.BLOCKED);
+        post.setBlockReason("违规");
+        when(postMapper.selectById(1L)).thenReturn(post);
+
+        assertThatThrownBy(() -> postService.getDetail(1L, 99L))
+                .isInstanceOf(BizException.class)
+                .hasMessageContaining("不存在");
     }
 }

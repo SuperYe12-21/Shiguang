@@ -42,6 +42,9 @@ public class PostVO {
 
     private String failReason;
 
+    /** 下架原因（仅作品作者能看到） */
+    private String blockReason;
+
     private Author author;
 
     private LocalDateTime createdAt;

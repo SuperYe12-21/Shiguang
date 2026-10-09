@@ -72,6 +72,9 @@
       </div>
       <p class="title">{{ post.title || '分享美好瞬间' }}</p>
       <p v-if="post.description" class="desc">{{ post.description }}</p>
+      <p v-if="post.status === 'BLOCKED'" class="blocked-line">
+        该作品已被管理员下架{{ post.blockReason ? '：' + post.blockReason : '' }}
+      </p>
       <p class="view-line" data-role="view-count">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 4C7.03 4 2.73 6.94 1 11c1.73 4.06 6.03 7 11 7s9.27-2.94 11-7c-1.73-4.06-6.03-7-11-7zm0 12c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
         {{ formatCount(post.viewCount) }} {{ post.type === 'IMAGE' ? '次浏览' : '次播放' }}
@@ -804,6 +807,17 @@ section.feed-item.item-compact .resume-frame {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.blocked-line {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffd08a;
+  background: rgba(255, 152, 0, 0.18);
 }
 
 .view-line {

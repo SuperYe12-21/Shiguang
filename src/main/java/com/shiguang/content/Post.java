@@ -45,6 +45,9 @@ public class Post {
 
     private String failReason;
 
+    /** 管理员下架原因（status=BLOCKED 时有值，仅作者可见） */
+    private String blockReason;
+
     private Integer likeCount;
 
     private Integer commentCount;

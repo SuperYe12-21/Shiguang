@@ -12,6 +12,9 @@
 
         <p class="panel-title">{{ post.title || '分享美好瞬间' }}</p>
         <p v-if="post.description" class="panel-desc">{{ post.description }}</p>
+        <p v-if="post.status === 'BLOCKED'" class="panel-blocked">
+          该作品已被管理员下架{{ post.blockReason ? '：' + post.blockReason : '' }}
+        </p>
 
         <div class="panel-actions">
           <button class="panel-btn" :class="{ liked: post.liked }" @click="$emit('like')">
@@ -167,6 +170,16 @@ function formatDate(t) {
   font-size: 13px;
   color: var(--sg-text-2);
   margin-bottom: 16px;
+}
+
+.panel-blocked {
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #b87400;
+  background: rgba(255, 152, 0, 0.12);
 }
 
 .panel-actions {

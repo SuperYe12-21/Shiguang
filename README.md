@@ -71,7 +71,7 @@ flowchart LR
 ## 项目结构
 
 ```
-db/init/            数据库脚本：001 全量建库 + 002~010 里程碑增量
+db/init/            数据库脚本：001 全量建库 + 002~012 里程碑增量
 src/main/java/com/shiguang/
   auth/             验证码登录、JWT 双令牌
   user/             用户、关注 / 粉丝、隐私设置
@@ -81,6 +81,7 @@ src/main/java/com/shiguang/
   interaction/      点赞、收藏、评论（二级回复、评论图片）
   notification/     通知中心（折叠 / 未读 / 定时清理）
   message/          私信（WebSocket 推送、会话、富媒体消息）
+  admin/            管理员作品管理（下架 / 恢复 / 删除、全量筛选）
   common/ config/   统一响应、异常、安全配置
 frontend/src/       Vue 3 前端（移动端 / PC 双端组件与视图）
 src/test/java/      JUnit 测试（单元 + 接口集成 + 并发）
@@ -92,7 +93,7 @@ docs/               设计文档与实施计划
 依赖：JDK 21、MySQL 8（库 `shiguang`）、Redis、MinIO、RabbitMQ、FFmpeg。
 
 ```powershell
-# 1. 初始化数据库（001 建库建表；002~010 为里程碑增量，按编号顺序）
+# 1. 初始化数据库（001 建库建表；002~012 为里程碑增量，按编号顺序）
 Get-ChildItem db\init\*.sql | Sort-Object Name | ForEach-Object { mysql -uroot -p < $_.FullName }
 
 # 2. 一键启动（中间件 + 后端 8080 + 前端 5173）
@@ -104,6 +105,16 @@ powershell -ExecutionPolicy Bypass -File .devtools\start-all.ps1 -Stop
 
 > 一键脚本基于本机 `.devtools` 便携版布局（Redis / MinIO / FFmpeg 等绿色版组件）；从零搭建可参考 `start-dev.ps1` 中的启动参数自行安装。
 > 开发期短信为 Mock（固定 `123456`）；接口文档：`http://localhost:8080/swagger-ui/index.html`
+
+### 管理员账号（作品管理后台）
+
+`user.role` 默认 `USER`。提升管理员在数据库里单独执行，**不要把真实手机号提交进仓库**：
+
+```sql
+UPDATE `user` SET `role` = 'ADMIN' WHERE `phone` = '<管理员手机号>';
+```
+
+管理员登录后从「个人主页 → ⋯ → 管理后台」进入 `/admin`：可按状态 / 可见性 / 作者 / 作品 ID 筛选全量作品，并下架（可填原因，作者可见）、恢复、删除。权限在服务端每次查库校验，非管理员请求 `/api/admin/**` 一律 403。
 
 ## 测试
 
@@ -122,4 +133,6 @@ powershell -ExecutionPolicy Bypass -File .devtools\start-all.ps1 -Stop
 - M8 收藏：作品收藏、主页收藏 Tab
 - M9 可见性设置：点赞 / 收藏 / 粉丝 / 关注四项可见性
 - M10 消息富媒体：评论图片、私信表情 / 图片、分享面板
-- 规划中：部署上线（Nginx / HTTPS / 生产短信 / 前端拆包优化）
+- M11 播放量统计：有效观看上报、进度条、断点续播
+- M12 管理员作品管理：角色权限、全量作品筛选、下架 / 恢复 / 删除
+- 规划中：部署上线（Nginx / HTTPS / 前端拆包优化）

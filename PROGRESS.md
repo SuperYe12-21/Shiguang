@@ -554,3 +554,28 @@
 - 验证完已把本地切回 mock（`SMS_PROVIDER` 留空），避免以后跑自动化测试时误发真实短信；日志确认回落为 `【拾光短信-Mock】`
 - 服务器上无需额外设置：`application-prod.yml` 里 provider 默认就是 `pnvs`
 - 遗留提醒：短信里显示的签名是阿里云赠送的「速通互联验证服务」，不是「拾光」；等以后有备案域名或小程序，再申请自己的签名并切 `SMS_PROVIDER=aliyun`
+
+### M12 管理员作品管理（角色 + 全量作品后台）
+- 需求：指定账号（管理员手机号，见本地 README「管理员账号」，不进仓库）要有最高权限，可以对**所有人**的作品做管理（本轮范围只做作品：查 / 下架 / 恢复 / 删除）
+- 设计文档：`docs/superpowers/specs/2026-10-09-admin-console-design.md`
+- 数据变更（`db/init/012_m12_admin.sql`）：
+  - `user.role` VARCHAR(20) 默认 `USER`（枚举 `UserRole`：USER / ADMIN，MyBatis 按名字映射，和 `PostStatus` 同一套路）
+  - `post.block_reason` VARCHAR(200)，`post.status` 注释补上 `BLOCKED`（列本身就是 VARCHAR(20)，不用改类型）
+  - 新增索引 `idx_status_created(status, created_at)`：管理列表按状态过滤 + 时间倒序，顺带惠及首页流
+- 关键决策：**用 `status=BLOCKED` 而不是新加一列**。所有"只该看到正常作品"的查询本来就带 `status=PUBLISHED`（首页流、朋友流、他人主页、点赞、收藏、搜索、历史、互动校验共 8 处），新增枚举值后这些地方**一行都不用改**，自动把下架作品排除干净；新加列则要逐个补条件，漏一处就是漏洞
+- 权限：JWT 里只有 userId，所以管理接口**每次查一次库**确认角色（管理流量小，且改角色立即生效，不用等 token 过期）；非管理员一律 403；`GET /api/admin/me` 只回 `{admin:true/false}` 供前端入口显隐
+- 新增接口（`com.shiguang.admin`）：
+  - `GET /api/admin/me`
+  - `GET /api/admin/posts`（`status` / `visibility` / `authorKeyword`（昵称或手机号）/ `postId` / `cursor` / `limit`，游标格式与 feed 一致）
+  - `POST /api/admin/posts/{id}/block`（body `{"reason":"..."}` ≤200 字，重复下架幂等、原因保留首次）
+  - `POST /api/admin/posts/{id}/unblock`（只对 BLOCKED 生效）
+  - `DELETE /api/admin/posts/{id}`（硬删，复用原有 delete：OSS 对象 + 点赞 / 收藏 / 评论级联清理 + 缓存失效事件）
+- 边界：下架只对 `PUBLISHED` 生效（PROCESSING / FAILED 报业务错误，没有意义）；删除对任何状态都允许；作者改可见性救不回被下架的作品
+- 作者侧：`FeedService.userPosts` 在 `own=true` 时不过滤 status，所以作者自己主页照常看得见被下架的作品 —— 加「已下架」角标（与私密锁同位置，二者互斥显示），详情里显示 `该作品已被管理员下架：<原因>`
+- 顺带补了一个泄漏口：`GET /api/posts/{id}` 是公开接口，原来只挡了 PRIVATE，现在被下架的详情对非作者也返回 404
+- 前端：新增 `/admin`（`AdminView.vue`，移动端深色 / PC 浅色，原生控件不依赖 Element Plus 表单组件），入口在个人主页（移动端「⋯」抽屉 + PC 操作区按钮），仅 `admin=true` 时出现
+- 验证：
+  - 接口层：非管理员 403、`admin/me` 两种身份、下架后匿名详情 404 而作者 200（带 blockReason）、他人主页 / feed / 搜索 / 点赞列表都查不到、重复下架幂等、PROCESSING 不可下架、恢复后匿名详情恢复 200、删除后列表为空且再删 404
+  - 端到端 `.devtools/test-admin-console.js`：移动端抽屉入口 → 管理页筛选 → 下架（原因回显）→ 自己主页角标 → 详情提示 → 恢复 → 非管理员无权限（且抽屉无入口）→ PC 端渲染与按钮，**16/16 通过**
+  - 回归：媒体 6/6、朋友页 10/10、观看历史 7/7；测试数据已复原（无残留 BLOCKED 记录）
+- 坑：同一文件的多个 `apply_patch` 并发提交会互相覆盖（工具仍报 Success）—— 之后改同一文件要串行 + 改完 `rg` 复核

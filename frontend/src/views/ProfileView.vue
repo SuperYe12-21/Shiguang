@@ -39,6 +39,7 @@
                 <span class="pc-uid">拾光号 {{ profile.id }}</span>
                 <div class="pc-actions">
                   <template v-if="isMe">
+                    <button v-if="isAdmin" class="pc-btn pc-btn-admin" @click="router.push('/admin')">管理后台</button>
                     <button class="pc-btn pc-btn-ghost" @click="router.push('/settings')">账号设置</button>
                     <button class="pc-btn pc-btn-ghost" @click="router.push('/history')">观看历史</button>
                     <button class="pc-btn pc-btn-ghost" @click="shareProfile">分享主页</button>
@@ -95,7 +96,8 @@
                     <span class="pc-ov-tag pc-ov-like"><svg viewBox="0 0 24 24" width="10" height="10" fill="#fff"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>{{ formatCount(p.likeCount) }}</span>
                   </span>
                 </span>
-                <span v-if="p.visibility === 'PRIVATE'" class="pc-cell-lock" title="仅自己可见">
+                <span v-if="p.status === 'BLOCKED'" class="pc-cell-blocked" title="已被管理员下架">已下架</span>
+                <span v-else-if="p.visibility === 'PRIVATE'" class="pc-cell-lock" title="仅自己可见">
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="#fff"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 12c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
                 </span>
               </div>
@@ -203,7 +205,8 @@
               {{ formatCount(p.likeCount) }}
             </span>
           </span>
-          <span v-if="p.visibility === 'PRIVATE'" class="pf-cell-lock" title="仅自己可见">
+          <span v-if="p.status === 'BLOCKED'" class="pf-cell-blocked" title="已被管理员下架">已下架</span>
+          <span v-else-if="p.visibility === 'PRIVATE'" class="pf-cell-lock" title="仅自己可见">
             <svg viewBox="0 0 24 24" width="11" height="11" fill="#fff"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 12c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
           </span>
         </div>
@@ -294,6 +297,11 @@
             <span>账号设置</span>
             <span class="pf-drawer-arr"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span>
           </div>
+          <div v-if="isMe && isAdmin" class="pf-drawer-item" @click="onDrawerAdmin">
+            <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg></span>
+            <span>管理后台</span>
+            <span class="pf-drawer-arr"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span>
+          </div>
         </div>
         <div class="pf-drawer-foot">拾光 · v1.0.0</div>
       </aside>
@@ -332,6 +340,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fetchMe, fetchProfile, fetchUserFavorites, fetchUserLikes, fetchUserPosts, updateMe, followUser, unfollowUser } from '../api/user'
+import { fetchAdminMe } from '../api/admin'
 import { presignUpload } from '../api/posts'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationStore } from '../stores/notification'
@@ -369,6 +378,7 @@ const favoritesLoading = ref(false)
 const favoritesCursor = ref(null)
 const favoritesHasMore = ref(true)
 const drawerOpen = ref(false)
+const isAdmin = ref(false)
 const remarkOpen = ref(false)
 const remarkText = ref('')
 const remark = ref('')
@@ -722,6 +732,11 @@ function onDrawerHistory() {
   router.push('/history')
 }
 
+function onDrawerAdmin() {
+  closeDrawer()
+  router.push('/admin')
+}
+
 function loadRemark(userId) {
   try {
     remark.value = localStorage.getItem(`sg-remark-${userId}`) || ''
@@ -842,6 +857,14 @@ onMounted(async () => {
       meId.value = me.id
     } catch (e) {
       // 未登录时忽略
+    }
+  }
+  if (auth.isLoggedIn) {
+    try {
+      const adminData = await fetchAdminMe()
+      isAdmin.value = !!adminData.admin
+    } catch (e) {
+      // 取不到就当作普通用户
     }
   }
   await loadProfile()
@@ -1696,6 +1719,21 @@ onBeforeUnmount(() => {
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
   }
+
+  /* 已被管理员下架角标（自己主页可见） */
+  .pf-cell-blocked {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #ffd08a;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
 }
 </style>
 
@@ -1963,6 +2001,17 @@ onBeforeUnmount(() => {
 .pc-btn-ghost:hover {
   border-color: #ff5c5c;
   color: #ff5c5c;
+}
+
+.pc-btn-admin {
+  background: rgba(255, 152, 0, 0.12);
+  color: #d98200;
+  border: 1px solid rgba(255, 152, 0, 0.28);
+}
+
+.pc-btn-admin:hover {
+  background: rgba(255, 152, 0, 0.18);
+  border-color: rgba(255, 152, 0, 0.5);
 }
 
 .pc-bio {
@@ -2254,6 +2303,21 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* 已被管理员下架角标 */
+.pc-cell-blocked {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffd08a;
+  background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }

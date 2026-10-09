@@ -76,7 +76,11 @@ public class PostService {
 
     public PostVO getDetail(Long id, Long viewerId) {
         Post post = requirePost(id);
-        if (post.getVisibility() == PostVisibility.PRIVATE && !post.getUserId().equals(viewerId)) {
+        boolean own = post.getUserId().equals(viewerId);
+        if (post.getVisibility() == PostVisibility.PRIVATE && !own) {
+            throw new BizException(404, "作品不存在或已删除");
+        }
+        if (post.getStatus() == PostStatus.BLOCKED && !own) {
             throw new BizException(404, "作品不存在或已删除");
         }
         PostVO vo = toVO(post);
@@ -96,6 +100,50 @@ public class PostService {
     @Transactional
     public void delete(Long id, Long userId) {
         Post post = requireOwnPost(id, userId, "只能删除自己的作品");
+        deleteInternal(post);
+    }
+
+    /** 管理员删除：不限作者、不限状态 */
+    @Transactional
+    public void adminDelete(Long id) {
+        deleteInternal(requirePost(id));
+    }
+
+    /** 管理员下架：只对已发布作品生效，重复下架幂等 */
+    @Transactional
+    public PostVO adminBlock(Long id, String reason) {
+        Post post = requirePost(id);
+        if (post.getStatus() == PostStatus.BLOCKED) {
+            return toVO(post);
+        }
+        if (post.getStatus() != PostStatus.PUBLISHED) {
+            throw new BizException(1, "只有已发布的作品才能下架");
+        }
+        post.setStatus(PostStatus.BLOCKED);
+        post.setBlockReason(normalizeReason(reason));
+        postMapper.updateById(post);
+        eventPublisher.publishEvent(new PostUpdatedEvent(id));
+        log.info("post {} blocked by admin: {}", id, post.getBlockReason());
+        return toVO(post);
+    }
+
+    /** 管理员恢复被下架的作品 */
+    @Transactional
+    public PostVO adminUnblock(Long id) {
+        Post post = requirePost(id);
+        if (post.getStatus() != PostStatus.BLOCKED) {
+            throw new BizException(1, "作品当前不是已下架状态");
+        }
+        post.setStatus(PostStatus.PUBLISHED);
+        post.setBlockReason("");
+        postMapper.updateById(post);
+        eventPublisher.publishEvent(new PostUpdatedEvent(id));
+        log.info("post {} unblocked by admin", id);
+        return toVO(post);
+    }
+
+    private void deleteInternal(Post post) {
+        Long id = post.getId();
         deleteObjects(post);
         postMapper.deleteById(id);
         likeService.cleanupPost(id);
@@ -179,6 +227,7 @@ public class PostService {
                 .commentCount(post.getCommentCount())
                 .viewCount(post.getViewCount() == null ? 0L : post.getViewCount())
                 .failReason(post.getFailReason())
+                .blockReason(post.getBlockReason())
                 .createdAt(post.getCreatedAt())
                 .author(PostVO.Author.builder()
                         .id(author.getId())
@@ -242,5 +291,13 @@ public class PostService {
 
     private static String trimToNull(String s) {
         return s == null || s.isBlank() ? "" : s.trim();
+    }
+
+    private static String normalizeReason(String reason) {
+        if (reason == null) {
+            return "";
+        }
+        String trimmed = reason.trim();
+        return trimmed.length() > 200 ? trimmed.substring(0, 200) : trimmed;
     }
 }

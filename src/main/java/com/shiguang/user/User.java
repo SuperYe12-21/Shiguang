@@ -22,6 +22,9 @@ public class User {
 
     private String bio;
 
+    /** USER（默认） / ADMIN */
+    private UserRole role;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

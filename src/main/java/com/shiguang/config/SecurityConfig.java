@@ -41,6 +41,7 @@ public class SecurityConfig {
                                 "/ws", "/ws/**")
                         .permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/user/me").authenticated()
+                        .requestMatchers("/api/admin/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/posts/**", "/api/user/**")
                         .permitAll()
                         .requestMatchers("/api/media/**").permitAll()
