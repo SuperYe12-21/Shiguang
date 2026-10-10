@@ -19,7 +19,7 @@
               :class="{ 'cp-flash': flashKey === 't' + c.id }"
               :ref="(el) => setRowRef('t' + c.id, el)"
             >
-              <img class="cp-avatar" :src="avatarSrc(c)" @error="onAvatarError(c)" alt="头像" />
+              <img class="cp-avatar" :src="avatarSrc(c)" @error="onAvatarError(c)" @click="goUser(c.author)" alt="头像" />
               <div class="cp-main">
                 <div class="cp-meta">
                   <span class="cp-name">{{ c.author ? c.author.nickname : '拾光用户' }}</span>
@@ -63,7 +63,7 @@
                 :class="{ 'cp-flash': flashKey === 'r' + r.id }"
                 :ref="(el) => setRowRef('r' + r.id, el)"
               >
-                <img class="cp-avatar cp-avatar-sm" :src="avatarSrc(r)" @error="onAvatarError(r)" alt="头像" />
+                <img class="cp-avatar cp-avatar-sm" :src="avatarSrc(r)" @error="onAvatarError(r)" @click="goUser(r.author)" alt="头像" />
                 <div class="cp-main">
                   <div class="cp-meta">
                     <span class="cp-name">{{ r.author ? r.author.nickname : '拾光用户' }}</span>
@@ -139,6 +139,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   fetchComments,
@@ -166,6 +167,7 @@ const FLASH_MS = 2000
 const FOCUS_MAX_PAGES = 5
 
 const auth = useAuthStore()
+const router = useRouter()
 const isPc = computed(() => window.innerWidth >= 768)
 
 const listEl = ref(null)
@@ -489,6 +491,14 @@ function close() {
   emit('close')
 }
 
+/** 点击评论者头像：收起评论面板（历史条目留给返回自然消费），再进入其主页 */
+function goUser(author) {
+  const id = author && author.id
+  if (!id) return
+  emit('close', { keepHistory: true })
+  router.push('/user/' + id)
+}
+
 function onKeydown(e) {
   if (e.key === 'Escape') close()
 }
@@ -715,6 +725,7 @@ function onAvatarError(c) {
   flex-shrink: 0;
   object-fit: cover;
   background: #f0e9e0;
+  cursor: pointer;
 }
 
 .cp-avatar-sm {

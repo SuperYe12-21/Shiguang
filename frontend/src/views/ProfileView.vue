@@ -136,8 +136,13 @@
         <img class="pf-avatar" :src="profile.avatarUrl || fallbackAvatar" alt="头像" @click="openAvatarView" />
         <div class="pf-head-side">
           <h2 class="pf-nickname">{{ displayName || '拾光用户' }}<span v-if="remark && !isMe" class="pf-remark-badge">备注</span></h2>
-          <button v-if="isMe" class="pf-follow" @click="openEdit">编辑资料</button>
-          <button v-else class="pf-follow" :class="{ 'pf-follow-on': profile.followedByMe }" @click="toggleFollow">{{ followText }}</button>
+          <div class="pf-side-btns">
+            <button v-if="isMe" class="pf-follow" @click="openEdit">编辑资料</button>
+            <template v-else>
+              <button class="pf-follow" :class="{ 'pf-follow-on': profile.followedByMe }" @click="toggleFollow">{{ followText }}</button>
+              <button class="pf-msg" @click="openChat">私信</button>
+            </template>
+          </div>
         </div>
       </div>
       <p v-if="profile.bio" class="pf-bio">{{ profile.bio }}</p>
@@ -267,11 +272,6 @@
           <button class="pf-drawer-close" aria-label="关闭" @click="closeDrawer">✕</button>
         </div>
         <div class="pf-drawer-body">
-          <div v-if="!isMe" class="pf-drawer-item" @click="onDrawerChat">
-            <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg></span>
-            <span>私信</span>
-            <span class="pf-drawer-arr"><svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg></span>
-          </div>
           <div v-if="isMe" class="pf-drawer-item" @click="onDrawerEdit">
             <span class="pf-drawer-ico"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></span>
             <span>编辑资料</span>
@@ -717,11 +717,6 @@ function onDrawerEdit() {
   openEdit()
 }
 
-function onDrawerChat() {
-  closeDrawer()
-  openChat()
-}
-
 function onDrawerSettings() {
   closeDrawer()
   router.push('/settings')
@@ -1029,6 +1024,17 @@ onBeforeUnmount(() => {
 }
 
 .pf-follow {
+  display: none;
+}
+
+/* 关注 / 私信并排（移动端显示在昵称下方，PC 端走操作区的按钮） */
+.pf-side-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pf-msg {
   display: none;
 }
 
@@ -1436,7 +1442,7 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: center;
     height: 34px;
-    padding: 0 26px;
+    padding: 0 20px;
     margin-top: 4px;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.16);
@@ -1454,6 +1460,28 @@ onBeforeUnmount(() => {
 
   .pf-follow-on {
     background: rgba(255, 255, 255, 0.1);
+  }
+
+  .pf-msg {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    padding: 0 18px;
+    margin-top: 4px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+  }
+
+  .pf-msg:active {
+    transform: scale(0.96);
+    background: rgba(255, 255, 255, 0.16);
   }
 
   .pf-bio {

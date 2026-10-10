@@ -59,7 +59,7 @@
           <p>{{ emptyText }}</p>
         </div>
       </main>
-      <BottomNav :active="feed.mode === 'friends' ? 'friends' : 'home'" @home="goHome" @me="goMe" />
+      <BottomNav :active="feed.mode === 'friends' ? 'friends' : 'home'" @home="goHome" />
     </template>
 
     <!-- PC：抖音式一屏一卡，滚轮翻页 -->
@@ -147,14 +147,14 @@
     <PostMorePanel
       v-if="morePost"
       :post="morePost"
-      @close="morePost = null"
+      @close="closeMore"
       @updated="onPostUpdated"
       @deleted="onPostDeleted"
     />
     <SharePanel
       v-if="sharePost"
       :post="sharePost"
-      @close="sharePost = null"
+      @close="closeShare"
     />
   </div>
 </template>
@@ -175,6 +175,7 @@ import CommentPanel from '../components/CommentPanel.vue'
 import PostMorePanel from '../components/PostMorePanel.vue'
 import SharePanel from '../components/SharePanel.vue'
 import UnreadBadge from '../components/UnreadBadge.vue'
+import { pushOverlay, popOverlay, dropOverlay } from '../utils/overlayHistory'
 import { useNotificationStore } from '../stores/notification'
 import { useMessageStore } from '../stores/message'
 
@@ -759,10 +760,12 @@ function goFriends() {
 
 // 首页按钮：已在首页流时点击 = 刷新回第一屏；在他人作品流/点赞流时先回到首页
 function goHome() {
-  closeComment()
   const scoped = feed.mode === 'user' || feed.mode === 'likes' || feed.mode === 'friends'
   const deepLinked = !!route.query.postId
-  if (feed.mode === 'home' && !scoped && !deepLinked) {
+  const stayOnHome = feed.mode === 'home' && !scoped && !deepLinked
+  // 留在首页（仅刷新）时回滚评论占用的历史条目；要跳去 /feed 则留给返回时自然消费
+  closeComment({ keepHistory: !stayOnHome })
+  if (stayOnHome) {
     if (!feed.loading) refreshHomeFeed()
     return
   }
@@ -802,6 +805,14 @@ function goAuthor(post) {
   router.push('/user/' + author.id)
 }
 
+/** 评论面板：打开时占一层历史，返回键先关面板（而不是退出首页） */
+let commentOverlayId = null
+
+function clearComment() {
+  commentPost.value = null
+  focus.value = { rootId: null, commentId: null }
+}
+
 function onComment(post) {
   if (!auth.isLoggedIn) {
     location.href = '/login'
@@ -809,16 +820,32 @@ function onComment(post) {
   }
   focus.value = { rootId: null, commentId: null }
   commentPost.value = post
+  if (commentOverlayId == null) {
+    commentOverlayId = pushOverlay(() => {
+      commentOverlayId = null
+      clearComment()
+    })
+  }
 }
 
-function closeComment() {
-  commentPost.value = null
-  focus.value = { rootId: null, commentId: null }
+/** keepHistory：关闭后马上要跳转/切换面板时，历史条目留给返回时自然消费 */
+function closeComment(opts) {
+  if (commentOverlayId != null) {
+    const id = commentOverlayId
+    commentOverlayId = null
+    if (opts && opts.keepHistory) dropOverlay(id)
+    else popOverlay(id)
+  }
+  clearComment()
 }
 
 /** 来自通知的跳转：?comment=1[&rootId=&commentId=]，定位完成后自动打开评论面板 */
 function openCommentFromQuery() {
-  if (route.query.comment !== '1') return
+  if (route.query.comment !== '1') {
+    // 从"通知直达评论"的流退回到普通流时，把这个自动打开（非用户点击）的面板收掉
+    if (commentOverlayId == null && commentPost.value) clearComment()
+    return
+  }
   const post = currentPost.value
   if (!post) return
   focus.value = {
@@ -828,9 +855,32 @@ function openCommentFromQuery() {
   commentPost.value = post
 }
 
+let moreOverlayId = null
+
+function clearMore() {
+  morePost.value = null
+}
+
+function closeMore(opts) {
+  if (moreOverlayId != null) {
+    const id = moreOverlayId
+    moreOverlayId = null
+    if (opts && opts.keepHistory) dropOverlay(id)
+    else popOverlay(id)
+  }
+  morePost.value = null
+}
+
 function onMore(post) {
-  closeComment()
+  closeComment({ keepHistory: true })
   morePost.value = post
+  // 更多面板同样占一层历史：返回键先关面板
+  if (moreOverlayId == null) {
+    moreOverlayId = pushOverlay(() => {
+      moreOverlayId = null
+      clearMore()
+    })
+  }
 }
 
 /** 可见性 / 文案变更：就地更新当前列表里的这条作品 */
@@ -843,7 +893,7 @@ function onPostUpdated(patch) {
 
 /** 删除作品：从列表移除，停留在同一个位置继续播放下一条 */
 function onPostDeleted(patch) {
-  morePost.value = null
+  closeMore()
   const index = feed.posts.findIndex((p) => p.id === patch.id)
   if (index < 0) {
     return
@@ -857,8 +907,31 @@ function onPostDeleted(patch) {
   })
 }
 
+let shareOverlayId = null
+
+function clearShare() {
+  sharePost.value = null
+}
+
+function closeShare(opts) {
+  if (shareOverlayId != null) {
+    const id = shareOverlayId
+    shareOverlayId = null
+    if (opts && opts.keepHistory) dropOverlay(id)
+    else popOverlay(id)
+  }
+  sharePost.value = null
+}
+
 function onShare(post) {
   sharePost.value = post
+  // 分享面板占一层历史：返回键先关面板
+  if (shareOverlayId == null) {
+    shareOverlayId = pushOverlay(() => {
+      shareOverlayId = null
+      clearShare()
+    })
+  }
 }
 
 async function onFollow(post) {

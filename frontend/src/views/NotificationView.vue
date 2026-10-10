@@ -210,11 +210,15 @@ function openItem(n) {
   }
   if (!n.postId) return
   // 进单作品页而不是首页流：看完点返回就回到消息页
-  const query = { comment: 1 }
-  if (n.commentId) {
-    query.rootId = n.rootId || n.commentId
-    query.commentId = n.commentId
-    query.highlight = 1
+  const query = {}
+  // 只有评论/回复类消息才直达评论区；点赞（含赞评论）等只打开作品，不弹评论区
+  if (n.type === 'COMMENT_POST' || n.type === 'REPLY_COMMENT') {
+    query.comment = 1
+    if (n.commentId) {
+      query.rootId = n.rootId || n.commentId
+      query.commentId = n.commentId
+      query.highlight = 1
+    }
   }
   router.push({ path: '/post/' + n.postId, query })
 }

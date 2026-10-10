@@ -17,7 +17,7 @@
       <span>朋友</span>
     </button>
 
-    <button class="nav-item publish" @click="go('/publish')">
+    <button class="nav-item publish" @click="goPublish">
       <span class="publish-circle">
         <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
           <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
@@ -39,7 +39,7 @@
       <span>消息</span>
     </button>
 
-    <button class="nav-item" :class="{ active: active === 'me' }" @click="$emit('me')">
+    <button class="nav-item" :class="{ active: active === 'me' }" @click="goMe">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
       </svg>
@@ -54,19 +54,35 @@ import { computed } from 'vue'
 import UnreadBadge from '../UnreadBadge.vue'
 import { useNotificationStore } from '../../stores/notification'
 import { useMessageStore } from '../../stores/message'
+import { useAuthStore } from '../../stores/auth'
 
 const router = useRouter()
 const notification = useNotificationStore()
 const message = useMessageStore()
+const auth = useAuthStore()
 // 消息入口同时承载通知与私信，红点合并计算
 const unreadTotal = computed(() => notification.unread.total + message.unread)
-const emit = defineEmits(['me', 'home'])
+const emit = defineEmits(['home'])
 const props = defineProps({
   active: { type: String, default: 'home' }
 })
 
 function go(path) {
   router.push(path)
+}
+
+// "我"：统一由导航组件处理跳转，未登录去登录页；任何用到底部导航的页面都生效
+function goMe() {
+  if (!auth.isLoggedIn) {
+    router.push('/login')
+    return
+  }
+  router.push('/me')
+}
+
+// 发布是功能页而非 tab，保留历史，从发布页返回可回到原 tab
+function goPublish() {
+  router.push('/publish')
 }
 
 // 已在首页（/feed）时点击首页 = 刷新内容，交由页面处理；其他页面则直接跳转
