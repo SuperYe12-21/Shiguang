@@ -107,6 +107,9 @@
         <button v-if="!author.following && !isMine" class="follow-btn" @click.stop="$emit('follow')">关注</button>
       </div>
       <p class="title">{{ post.title || '分享美好瞬间' }}</p>
+      <p v-if="post.status === 'BLOCKED'" class="blocked-line">
+        该作品已被管理员下架{{ post.blockReason ? '：' + post.blockReason : '' }}
+      </p>
       <p v-if="post.description" class="desc">{{ post.description }}</p>
       <span class="tag">{{ post.type === 'VIDEO' ? '短视频' : '图文' }} · {{ formatDate(post.createdAt) }}</span>
       <span class="view-line" data-role="view-count">
@@ -939,6 +942,17 @@ onBeforeUnmount(() => {
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.blocked-line {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffd08a;
+  background: rgba(255, 152, 0, 0.18);
 }
 
 .tag {

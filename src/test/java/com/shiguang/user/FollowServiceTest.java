@@ -1,11 +1,13 @@
 package com.shiguang.user;
 
 import com.shiguang.common.BizException;
+import com.shiguang.storage.StorageService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,6 +24,12 @@ class FollowServiceTest {
 
     @Mock
     private UserMapper userMapper;
+
+    @Mock
+    private StorageService storageService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private FollowService followService;

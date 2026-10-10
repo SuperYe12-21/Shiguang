@@ -579,3 +579,30 @@
   - 端到端 `.devtools/test-admin-console.js`：移动端抽屉入口 → 管理页筛选 → 下架（原因回显）→ 自己主页角标 → 详情提示 → 恢复 → 非管理员无权限（且抽屉无入口）→ PC 端渲染与按钮，**16/16 通过**
   - 回归：媒体 6/6、朋友页 10/10、观看历史 7/7；测试数据已复原（无残留 BLOCKED 记录）
 - 坑：同一文件的多个 `apply_patch` 并发提交会互相覆盖（工具仍报 Success）—— 之后改同一文件要串行 + 改完 `rg` 复核
+
+### 部署前体检（2026-10-10）
+- 目标：上线前把整仓过一遍，确认没有"只在开发环境成立"的东西被带上生产
+- 数据库：`db/init/002_m2_content.sql` 原来只对老库可用（全新库执行会 `Can't DROP 'cover_url'` 直接中断部署）。
+  改成 `information_schema` 判断 + 存储过程 `sg_m2_upgrade`，同时兼容"全新安装"与"老库升级"两条路径。
+  验证：全新库跑完 12 个脚本，结构 90 列 / 33 索引与开发库逐列逐索引一致；老库升级路径单独建库验证通过
+- 测试：修掉 4 个历史遗留失败（`PostServiceTest` 缺 `ViewCountService` / `FollowService` mock、断言停在
+  `TranscodePublisher` 时代；`FollowServiceTest` 缺 `ApplicationEventPublisher`；`InteractionFlowTest`
+  的删除权限断言没跟上"评论作者或作品作者可删"的新规则，改为覆盖第三方 403 / 作品作者可删 / 本人可删）。
+  `mvn clean package` **69/69 通过**，产出可运行 jar
+- 前端：登录页"开发环境验证码为 123456"改为构建期折叠（`import.meta.env.DEV ? ... : ''`），
+  线上 chunk 里既无提示文案也无 123456 字样；`npm run build` 通过（dist 42 文件 / 574KB，路由级拆包已成）
+- WebSocket 加固：`/ws` 原来的 `setAllowedOriginPatterns("*")` 收口到与 HTTP CORS 同一份白名单
+  （`app.cors.allowed-origins`，prod 默认站点自身来源）。实测：白名单来源 + 合法 token → 101 升级成功，
+  外来来源 → 403，无 Origin（非浏览器客户端）→ 101
+- 死代码清理：删掉没有任何页面渲染的 `PcSideNav.vue` / `PcRightPanel.vue`；`PcRightPanel` 里那段
+  "已被管理员下架"提示只存在于死代码里，已挪到真正在用的 `PcFeedCard.vue`（顺带补上 PC 端看不到下架原因的问题）
+- `GlobalExceptionHandler` 补 3 类客户端错误：缺必填参数 / 参数类型不对 / 请求体不是合法 JSON。
+  原来一律回 500，实测 `/api/notifications` 不带 `category` 会显示"服务器开小差了"；现在都回 400 并带上具体参数名
+- jar 冒烟（打包产物真跑一遍）：匿名 feed、登录、`/api/user/me`、`/api/admin/me`（admin=true）、详情、
+  观看历史、通知、会话、搜索用户/作品、预签名上传全部正常；媒体地址全部指向 OSS `shiguang-bucket`；
+  短信 60 秒冷却、验证码单次有效、验证码不随接口返回，均符合预期
+- 安全复查：仓库无硬编码密钥；prod 缺密钥直接启动失败；Swagger 线上关闭；CORS / JWT / OSS / 短信
+  密钥类配置全部走环境变量；dev 弱口令只存在 `application-dev.yml`
+- 待办（部署时做）：服务器装 JDK21 / MySQL / Redis / RabbitMQ / ffmpeg、导入 12 个 SQL、systemd 托管 jar、
+  Nginx 托管 dist 并反代 `/api` 与 `/ws`（对 `/ws` 关掉 access_log 免得 token 进日志）、
+  用 SQL 把管理员手机号置为 ADMIN；`/ws?token=` 走 query 的老问题改由 nginx 日志侧规避

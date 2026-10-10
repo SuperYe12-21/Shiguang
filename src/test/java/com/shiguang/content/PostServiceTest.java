@@ -1,12 +1,13 @@
 package com.shiguang.content;
 
 import com.shiguang.common.BizException;
-import com.shiguang.content.transcode.TranscodePublisher;
+import com.shiguang.feed.ViewCountService;
 import com.shiguang.interaction.CommentService;
 import com.shiguang.interaction.FavoriteService;
 import com.shiguang.interaction.LikeService;
 import org.springframework.context.ApplicationEventPublisher;
 import com.shiguang.storage.StorageService;
+import com.shiguang.user.FollowService;
 import com.shiguang.user.User;
 import com.shiguang.user.UserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,9 +44,6 @@ class PostServiceTest {
     private StorageService storageService;
 
     @Mock
-    private TranscodePublisher transcodePublisher;
-
-    @Mock
     private LikeService likeService;
 
     @Mock
@@ -53,6 +51,12 @@ class PostServiceTest {
 
     @Mock
     private CommentService commentService;
+
+    @Mock
+    private FollowService followService;
+
+    @Mock
+    private ViewCountService viewCountService;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -98,7 +102,7 @@ class PostServiceTest {
 
         assertThat(vo.getStatus()).isEqualTo(PostStatus.PUBLISHED);
         assertThat(vo.getImages()).hasSize(2);
-        verify(transcodePublisher, never()).send(any());
+        verify(eventPublisher, never()).publishEvent(any(PostTranscodeRequestedEvent.class));
     }
 
     @Test
@@ -112,7 +116,7 @@ class PostServiceTest {
         PostVO vo = postService.create(videoRequest("videos/src.mp4"), 7L);
 
         assertThat(vo.getStatus()).isEqualTo(PostStatus.PROCESSING);
-        verify(transcodePublisher).send(101L);
+        verify(eventPublisher).publishEvent(new PostTranscodeRequestedEvent(101L));
     }
 
     @Test

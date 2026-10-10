@@ -3,11 +3,14 @@ package com.shiguang.common;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
@@ -38,6 +41,25 @@ public class GlobalExceptionHandler {
     public ResponseEntity<R<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(R.fail(405, "请求方法不支持"));
     }
+
+    /** 少了必填查询参数（比如 /api/notifications 没带 category）：是调用方的问题，别报成 500 */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<R<Void>> handleMissingParam(MissingServletRequestParameterException ex) {
+        return ResponseEntity.badRequest().body(R.fail(1, "缺少必需参数: " + ex.getParameterName()));
+    }
+
+    /** 参数类型不对（比如 cursor 传了非数字）：同样是调用方的问题 */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<R<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.badRequest().body(R.fail(1, "参数格式不正确: " + ex.getName()));
+    }
+
+    /** 请求体不是合法 JSON（比如 body 写错）：也是 400 */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<R<Void>> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        return ResponseEntity.badRequest().body(R.fail(1, "请求体格式不正确"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<R<Void>> handleOther(Exception ex) {
         log.error("服务器内部错误", ex);

@@ -39,7 +39,7 @@
               {{ counting > 0 ? counting + 's 后重发' : '获取验证码' }}
             </button>
           </div>
-          <p class="field-hint">开发环境验证码为 123456</p>
+          <p v-if="devHint" class="field-hint">{{ devHint }}</p>
         </div>
 
         <button class="sg-btn-primary login-btn" :disabled="!canSubmit || loading" @click="doLogin">
@@ -59,6 +59,10 @@ import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
+
+// 提示只在本地开发构建里出现：生产构建时 import.meta.env.DEV 会被静态替换为 false，
+// 三元表达式随之折叠成空串，连文案都不会进线上 chunk
+const devHint = import.meta.env.DEV ? '开发环境验证码为 123456' : ''
 
 const phone = ref('')
 const code = ref('')

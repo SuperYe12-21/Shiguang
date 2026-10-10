@@ -42,6 +42,7 @@ class InteractionFlowTest {
 
     private final String userAPhone = "131" + ThreadLocalRandom.current().nextInt(10000000, 99999999);
     private final String userBPhone = "132" + ThreadLocalRandom.current().nextInt(10000000, 99999999);
+    private final String userCPhone = "133" + ThreadLocalRandom.current().nextInt(10000000, 99999999);
 
     private final List<Long> createdPosts = new ArrayList<>();
     private String userAToken;
@@ -146,18 +147,36 @@ class InteractionFlowTest {
         mockMvc.perform(get("/api/posts/" + postId).header("Authorization", "Bearer " + tokenA))
                 .andExpect(jsonPath("$.data.commentCount").value(1));
 
-        // A 不能删 B 的评论
-        mockMvc.perform(delete("/api/comments/" + commentId).header("Authorization", "Bearer " + tokenA))
+        // 无关第三方不能删别人的评论
+        String tokenC = login(userCPhone);
+        mockMvc.perform(delete("/api/comments/" + commentId).header("Authorization", "Bearer " + tokenC))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(403));
 
-        // B 删自己的评论
-        mockMvc.perform(delete("/api/comments/" + commentId).header("Authorization", "Bearer " + tokenB))
+        // 作品作者（A）可以删掉自己作品下别人发的评论
+        mockMvc.perform(delete("/api/comments/" + commentId).header("Authorization", "Bearer " + tokenA))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
 
         mockMvc.perform(get("/api/posts/" + postId + "/comments").header("Authorization", "Bearer " + tokenB))
                 .andExpect(jsonPath("$.data.items").isEmpty());
+
+        mockMvc.perform(get("/api/posts/" + postId).header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.data.commentCount").value(0));
+
+        // 评论作者本人可以删自己的评论
+        MvcResult secondResult = mockMvc.perform(post("/api/posts/" + postId + "/comments")
+                        .header("Authorization", "Bearer " + tokenB)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"自己删自己的评论\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        long secondCommentId = objectMapper.readTree(secondResult.getResponse().getContentAsString())
+                .path("data").path("id").asLong();
+
+        mockMvc.perform(delete("/api/comments/" + secondCommentId).header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
 
         mockMvc.perform(get("/api/posts/" + postId).header("Authorization", "Bearer " + tokenA))
                 .andExpect(jsonPath("$.data.commentCount").value(0));
