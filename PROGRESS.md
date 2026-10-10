@@ -606,3 +606,20 @@
 - 待办（部署时做）：服务器装 JDK21 / MySQL / Redis / RabbitMQ / ffmpeg、导入 12 个 SQL、systemd 托管 jar、
   Nginx 托管 dist 并反代 `/api` 与 `/ws`（对 `/ws` 关掉 access_log 免得 token 进日志）、
   用 SQL 把管理员手机号置为 ADMIN；`/ws?token=` 走 query 的老问题改由 nginx 日志侧规避
+
+
+### 部署上线（2026-10-10）
+- 服务器：阿里云 ECS（Ubuntu 22.04，2C4G，50G 盘），公网 IP `123.57.252.14`，当前为 IP 直连、无 HTTPS
+- 安装清单：OpenJDK 21.0.12 / MySQL 8.0.46 / Redis 6.0.16 / RabbitMQ 3.9.27 / ffmpeg 4.4.2 / nginx 1.18.0；加了 2G swap（4G 小内存机器保险）
+- 数据库：建库 `shiguang` + 账号 `shiguang@127.0.0.1`，按顺序导入 `db/init` 下 12 个脚本（11 张表）；MySQL 小内存调优（innodb_buffer_pool 256M、关 performance_schema）
+- 中间件：Redis 开 requirepass；RabbitMQ 建 `shiguang` 用户 + 全权限、内存水位 0.4、删除 guest
+- 部署形态与仓库里准备的一致：systemd 托管 `/opt/shiguang/app.jar`（环境变量走 `/opt/shiguang/shiguang.env`，权限 600）+ nginx 托管 `/opt/shiguang/dist` 并反代 `/api`、`/ws`（`/ws` 关闭 access_log，token 不进日志）
+- 产物：后端 `mvn -DskipTests package`（84.9 MB jar）；前端 `npm run build`
+- 外网实测：`GET /` 200（SPA 首页）；`/assets/*`、favicon 200；`POST /api/auth/sms-code` 打到了阿里云（假号码返回"非法参数"，说明 AK / pnvs 通道正常）；构建产物里 grep 无 localhost / 8080 残留
+- 管理员：预置 `15035271015`（彭于烨，id=1）为 ADMIN，首次登录即生效；生产库当前无内容，首页会是空状态
+- SSH 备忘：Windows OpenSSH 9.5 的 hostbound 兼容问题用 `.devtools/ssh-run.py`（paramiko）绕过；原私钥被加密不可用，已重新生成免密密钥并装到服务器（旧文件备份为 `*.encrypted.bak`）
+- 待办：
+  - 真机登录（真实短信）+ 发布一条作品，验证 OSS 直传 / 转码 / 播放全链路
+  - 域名备案通过后：nginx 换 server_name + 配 443 HTTPS（现在是 IP 直连）
+  - MySQL 定期备份（尚未配置）
+  - OSS 上 12 个孤儿对象（约 102MB，此前已列清单）可清理
