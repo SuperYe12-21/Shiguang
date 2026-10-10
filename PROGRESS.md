@@ -616,7 +616,9 @@
 - 部署形态与仓库里准备的一致：systemd 托管 `/opt/shiguang/app.jar`（环境变量走 `/opt/shiguang/shiguang.env`，权限 600）+ nginx 托管 `/opt/shiguang/dist` 并反代 `/api`、`/ws`（`/ws` 关闭 access_log，token 不进日志）
 - 产物：后端 `mvn -DskipTests package`（84.9 MB jar）；前端 `npm run build`
 - 外网实测：`GET /` 200（SPA 首页）；`/assets/*`、favicon 200；`POST /api/auth/sms-code` 打到了阿里云（假号码返回"非法参数"，说明 AK / pnvs 通道正常）；构建产物里 grep 无 localhost / 8080 残留
-- 管理员：预置 `15035271015`（彭于烨，id=1）为 ADMIN，首次登录即生效；生产库当前无内容，首页会是空状态
+- 管理员：预置 `15035271015`（彭于烨，id=1）为 ADMIN，首次登录即生效
+- 演示内容：把本地库的 10 条作品 / 15 条评论 / 23 个赞连同 6 个相关账号搬到生产（本地 347 → 生产 1 做 ID 重映射，避免撞预置管理员；741 个早期测试账号未带过去），媒体本来就在同一个 OSS 桶，直接可用
+- 线上实测：`GET /api/posts/feed` 200 返回 10 条；封面/视频封面 URL 206 image/*；真实浏览器打开 `http://123.57.252.14/feed` 渲染出 10 张卡片
 - SSH 备忘：Windows OpenSSH 9.5 的 hostbound 兼容问题用 `.devtools/ssh-run.py`（paramiko）绕过；原私钥被加密不可用，已重新生成免密密钥并装到服务器（旧文件备份为 `*.encrypted.bak`）
 - 待办：
   - 真机登录（真实短信）+ 发布一条作品，验证 OSS 直传 / 转码 / 播放全链路
