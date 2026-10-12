@@ -7,6 +7,7 @@ import com.shiguang.content.PostMapper;
 import com.shiguang.content.PostStatus;
 import com.shiguang.interaction.LikeService;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.image.ImageNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,7 @@ public class UserService {
     private final FollowService followService;
     private final PostMapper postMapper;
     private final StorageService storageService;
+    private final ImageNormalizer imageNormalizer;
     private final LikeService likeService;
     private final UserPrivacyService privacyService;
 
@@ -107,7 +109,7 @@ public class UserService {
     public User updateProfile(Long userId, String nickname, String avatarUrl, String bio) {
         User user = getById(userId);
         user.setNickname(nickname);
-        user.setAvatarUrl(avatarUrl);
+        user.setAvatarUrl(imageNormalizer.normalize(avatarUrl));
         user.setBio(bio);
         userMapper.updateById(user);
         return user;

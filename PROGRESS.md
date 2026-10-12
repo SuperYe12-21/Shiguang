@@ -625,3 +625,27 @@
   - 域名备案通过后：nginx 换 server_name + 配 443 HTTPS（现在是 IP 直连）
   - MySQL 定期备份（尚未配置）
   - OSS 上 12 个孤儿对象（约 102MB，此前已列清单）可清理
+
+
+### 上线后加固：日志（2026-10-10）
+- 隐患：systemd 原先用 `StandardOutput=append:/opt/shiguang/logs/stdout.log` 落盘，**没有轮转**，且与 logback 的 `shiguang.log` 内容重复，长期运行会把 50G 盘写满
+- 改法：unit 换 `StandardOutput=journal` / `StandardError=journal` + `SyslogIdentifier=shiguang`，文件日志只留 logback 那一份（50MB/1GB/14 天自轮转）
+- 新增 `/etc/logrotate.d/shiguang`：`daily` + `size 100M`、`rotate 7`、`compress`、`delaycompress`、`copytruncate`（JVM 一直持有 fd，必须 copytruncate 才能截断生效）、`su shiguang shiguang`
+- journald 显式限容 `SystemMaxUse=300M`（默认是磁盘 10%、上限 4G）
+- 清理：删掉已废弃的 `stdout.log` / `stderr.log`；清掉部署期遗留在 `/tmp` 的临时文件（含一份 644 权限的 `shiguang.env`，里面是全部密码）
+- 实测：`logrotate -f` 强制轮转后 inode 不变、应用继续写入新日志；重启后 28 秒 8080 就绪，`/`、`/api/posts/feed`、`/assets/*` 均 200；journald 与 `shiguang.log` 双路可见
+- 仓库同步：`.devtools/deploy/shiguang.service` 换成 journal 版、新增 `.devtools/deploy/logrotate-shiguang.conf`、`step-app.sh` 补上安装 logrotate 与 journald 限容两步
+
+
+### 修复：iPhone 照片（HEIC）上传后显示不出来（2026-10-10）
+- 现象：线上一个新用户的头像全都是空白。查下来 URL 是 200、`Content-Type: image/jpeg`，但文件头是 `ftypheic` —— **内容是 HEIC，只是文件名和类型都写着 JPEG**，Chromium 系浏览器解不了 HEIC，所以渲染失败
+- 成因：前端直传只信 `file.type` 和文件扩展名（iOS 有些浏览器会交出「名为 .jpeg、实为 HEIC」的文件），后端也没有校验过真实字节，坏数据直接入库
+- 方案（服务端自动转码，用户无感）：新增 `com.shiguang.storage.image` 包
+  - `ImageNormalizer`：入库前用 `open(obj, 0, 32)` 读对象头部，按 ISO-BMFF `ftyp` + brand 判定是不是 HEIC/HEIF（`heic/heix/hevc/hevx/heim/heis/heif/mif1/msf1`；avif 不转，Chromium 自己能显示）；是就下载 → 转 JPEG → 换新对象名入库 → 删掉原文件；探测失败按原样放行（存储抖动不该挡用户发内容）
+  - `HeifConverter` / `ProcessHeifConverter`：调 libheif 的 `heif-convert -q 90`，30 秒超时
+  - `ImageProperties`：`app.image.heif-convert-path`（env `HEIF_CONVERT_PATH`）
+  - 接入 4 个入口：发帖图文与视频封面（`PostService.create`）、评论与回复（`CommentService`）、私信（`MessageService`）、头像与资料（`UserService.updateProfile`）
+- 依赖：服务器 `apt install libheif-examples`（ffmpeg 4.4 解不了 HEIC，实测报 `moov atom not found`）；`.devtools/deploy/step-app.sh` 与 `shiguang.env` 已同步
+- 测试：`ImageNormalizerTest` 10 个用例（转码替换/原样放行/URL 与空值/探测失败/转换器故障/批量顺序/brand 判定）；`PostServiceTest` 补 mock；全量 `mvn test` 79 个用例全绿
+- 线上验证：拿那张真 HEIC 重新走一遍「预签名 → 直传（谎报 jpeg）→ 设为头像」，接口返回新 .jpg 对象、库里存裸对象名、新对象文件头 `ffd8ffe0`（真 JPEG）、原 HEIC 对象被自动清掉（404），日志有 `HEIC 已转成 JPEG: ...jpeg -> ...jpg`
+- 数据修复：出问题那位用户（id=362）的头像已转成 512×644 / 39KB 的 JPEG 并改库，OSS 原 HEIC 已删（原始件备份 `/root/avatar-362-original.heic`）

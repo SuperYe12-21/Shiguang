@@ -8,6 +8,7 @@ import com.shiguang.common.PageVO;
 import com.shiguang.content.Post;
 import com.shiguang.content.PostMapper;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.image.ImageNormalizer;
 import com.shiguang.user.User;
 import com.shiguang.user.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,7 @@ public class CommentService {
     private final LikeService likeService;
     private final ApplicationEventPublisher eventPublisher;
     private final StorageService storageService;
+    private final ImageNormalizer imageNormalizer;
 
     /** 顶层评论分页，时间倒序（最新在前） */
     public PageVO<CommentVO> list(Long postId, Long cursorId, int limit, Long viewerId) {
@@ -88,7 +90,7 @@ public class CommentService {
     public CommentVO create(Long postId, Long userId, String content, List<String> images) {
         Post post = likeService.requireAccessiblePost(postId, userId);
         String trimmed = normalizeContent(content);
-        List<String> objects = normalizeImages(images);
+        List<String> objects = imageNormalizer.normalizeAll(normalizeImages(images));
         if (trimmed.isEmpty() && objects.isEmpty()) {
             throw new BizException(1, "评论内容不能为空");
         }
@@ -116,7 +118,7 @@ public class CommentService {
         Comment parent = requireComment(commentId);
         Post post = likeService.requireAccessiblePost(parent.getPostId(), userId);
         String trimmed = normalizeContent(content);
-        List<String> objects = normalizeImages(images);
+        List<String> objects = imageNormalizer.normalizeAll(normalizeImages(images));
         if (trimmed.isEmpty() && objects.isEmpty()) {
             throw new BizException(1, "回复内容不能为空");
         }

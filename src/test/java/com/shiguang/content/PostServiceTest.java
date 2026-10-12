@@ -7,6 +7,7 @@ import com.shiguang.interaction.FavoriteService;
 import com.shiguang.interaction.LikeService;
 import org.springframework.context.ApplicationEventPublisher;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.image.ImageNormalizer;
 import com.shiguang.user.FollowService;
 import com.shiguang.user.User;
 import com.shiguang.user.UserService;
@@ -44,6 +45,9 @@ class PostServiceTest {
     private StorageService storageService;
 
     @Mock
+    private ImageNormalizer imageNormalizer;
+
+    @Mock
     private LikeService likeService;
 
     @Mock
@@ -72,6 +76,8 @@ class PostServiceTest {
         author.setNickname("作者");
         author.setAvatarUrl("https://example.com/avatar.png");
         lenient().when(userService.getById(7L)).thenReturn(author);
+        lenient().when(imageNormalizer.normalize(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(imageNormalizer.normalizeAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     private static CreatePostRequest videoRequest(String videoObject) {

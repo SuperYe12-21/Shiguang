@@ -6,6 +6,7 @@ import com.shiguang.interaction.CommentService;
 import com.shiguang.interaction.FavoriteService;
 import com.shiguang.interaction.LikeService;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.image.ImageNormalizer;
 import com.shiguang.user.User;
 import com.shiguang.user.FollowService;
 import com.shiguang.user.UserService;
@@ -26,6 +27,7 @@ public class PostService {
     private final PostMapper postMapper;
     private final UserService userService;
     private final StorageService storageService;
+    private final ImageNormalizer imageNormalizer;
     private final LikeService likeService;
     private final FavoriteService favoriteService;
     private final CommentService commentService;
@@ -41,7 +43,7 @@ public class PostService {
         post.setType(type);
         post.setTitle(trimToNull(request.getTitle()));
         post.setDescription(trimToNull(request.getDescription()));
-        post.setCoverObject(trimToNull(request.getCoverObject()));
+        post.setCoverObject(imageNormalizer.normalize(trimToNull(request.getCoverObject())));
         post.setVisibility(PostVisibility.PUBLIC);
         post.setLikeCount(0);
         post.setCommentCount(0);
@@ -56,7 +58,8 @@ public class PostService {
             if (request.getImages() == null || request.getImages().isEmpty()) {
                 throw new BizException("图文作品必须提供至少一张图片");
             }
-            post.setImagesObject(request.getImages().stream().map(String::trim).toList());
+            // 前端直传只看扩展名，可能混进 HEIC（iPhone 默认格式），入库前统一转成 JPEG
+            post.setImagesObject(imageNormalizer.normalizeAll(request.getImages().stream().map(String::trim).toList()));
             post.setStatus(PostStatus.PUBLISHED);
         }
         postMapper.insert(post);

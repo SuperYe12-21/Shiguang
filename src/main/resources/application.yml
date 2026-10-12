@@ -79,6 +79,10 @@ app:
     queue: ${TRANSCODE_QUEUE:shiguang.transcode}
     exchange: ${TRANSCODE_EXCHANGE:shiguang.transcode.exchange}
     routing-key: ${TRANSCODE_ROUTING_KEY:transcode}
+  image:
+    # HEIC/HEIF → JPEG：iPhone 默认拍照格式 Chromium 解不了，入库前统一转掉
+    # 服务器依赖 apt 装的 libheif-examples（/usr/bin/heif-convert）
+    heif-convert-path: ${HEIF_CONVERT_PATH:heif-convert}
 
 springdoc:
   swagger-ui:

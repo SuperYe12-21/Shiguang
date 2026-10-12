@@ -8,6 +8,7 @@ import com.shiguang.content.Post;
 import com.shiguang.content.PostMapper;
 import com.shiguang.interaction.LikeService;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.image.ImageNormalizer;
 import com.shiguang.user.FollowService;
 import com.shiguang.user.User;
 import com.shiguang.user.UserMapper;
@@ -51,6 +52,7 @@ public class MessageService {
     private final FollowService followService;
     private final UserMapper userMapper;
     private final StorageService storageService;
+    private final ImageNormalizer imageNormalizer;
     private final ApplicationEventPublisher eventPublisher;
 
     /** 会话列表：按最近消息倒序，游标格式 millis_id */
@@ -152,7 +154,7 @@ public class MessageService {
                                  List<String> rawImages, Long postId) {
         MessageType type = parseType(rawType);
         String content = rawContent == null ? "" : rawContent.trim();
-        List<String> images = normalizeImages(rawImages);
+        List<String> images = imageNormalizer.normalizeAll(normalizeImages(rawImages));
         if (type == MessageType.TEXT && content.isEmpty()) {
             throw new BizException(1, "消息不能为空");
         }
