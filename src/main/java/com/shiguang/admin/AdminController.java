@@ -40,6 +40,15 @@ public class AdminController {
         return R.ok(adminService.listPosts(status, visibility, authorKeyword, postId, cursor, limit));
     }
 
+    /** 用户列表：按注册时间倒序，支持昵称 / 手机号模糊搜索 */
+    @GetMapping("/users")
+    public R<PageVO<AdminUserVO>> users(@RequestParam(required = false) String keyword,
+                                        @RequestParam(required = false) String cursor,
+                                        @RequestParam(defaultValue = "20") int limit) {
+        adminService.requireAdmin(SecurityUtils.getUserId());
+        return R.ok(adminService.listUsers(keyword, cursor, limit));
+    }
+
     /** 下架作品（可填原因，作者可见），重复下架幂等 */
     @PostMapping("/posts/{id}/block")
     public R<PostVO> block(@PathVariable Long id, @Valid @RequestBody BlockPostRequest request) {

@@ -1,6 +1,7 @@
 package com.shiguang.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.shiguang.common.BizException;
 import com.shiguang.common.PageVO;
 import com.shiguang.common.SearchText;
@@ -105,6 +106,39 @@ public class AdminService {
                 .build();
     }
 
+    /** 用户列表：按注册时间倒序，支持昵称 / 手机号模糊搜索 */
+    public PageVO<AdminUserVO> listUsers(String keyword, String cursor, int limit) {
+        int size = normalizeLimit(limit);
+        String search = SearchText.normalize(keyword);
+
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        if (!search.isEmpty()) {
+            String like = SearchText.escapeLike(search);
+            wrapper.and(w -> w.like(User::getNickname, like).or().like(User::getPhone, like));
+        }
+        if (cursor != null && !cursor.isBlank()) {
+            Cursor c = parseCursor(cursor);
+            wrapper.and(w -> w.lt(User::getCreatedAt, c.time())
+                    .or(o -> o.eq(User::getCreatedAt, c.time()).lt(User::getId, c.id())));
+        }
+        wrapper.orderByDesc(User::getCreatedAt)
+                .orderByDesc(User::getId)
+                .last("LIMIT " + (size + 1));
+        List<User> rows = userMapper.selectList(wrapper);
+
+        boolean hasMore = rows.size() > size;
+        List<User> page = hasMore ? rows.subList(0, size) : rows;
+        Map<Long, Integer> postCounts = loadPostCounts(page);
+        List<AdminUserVO> items = page.stream().map(user -> toUserVO(user, postCounts)).toList();
+        User last = page.isEmpty() ? null : page.get(page.size() - 1);
+        String nextCursor = hasMore && last != null ? cursorOf(last.getCreatedAt(), last.getId()) : null;
+        return PageVO.<AdminUserVO>builder()
+                .items(items)
+                .nextCursor(nextCursor)
+                .hasMore(nextCursor != null)
+                .build();
+    }
+
     public PostVO block(Long postId, String reason) {
         return postService.adminBlock(postId, reason);
     }
@@ -154,6 +188,32 @@ public class AdminService {
                 .authorNickname(author == null ? "用户已注销" : author.getNickname())
                 .authorPhone(author == null ? "" : author.getPhone())
                 .authorAvatarUrl(author == null ? "" : avatarUrl(author.getAvatarUrl()))
+                .build();
+    }
+
+    private Map<Long, Integer> loadPostCounts(List<User> users) {
+        List<Long> ids = users.stream().map(User::getId).toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        QueryWrapper<Post> wrapper = new QueryWrapper<>();
+        wrapper.select("user_id AS userId", "COUNT(*) AS total")
+                .in("user_id", ids)
+                .groupBy("user_id");
+        return postMapper.selectMaps(wrapper).stream().collect(Collectors.toMap(
+                row -> ((Number) row.get("userId")).longValue(),
+                row -> ((Number) row.get("total")).intValue()));
+    }
+
+    private AdminUserVO toUserVO(User user, Map<Long, Integer> postCounts) {
+        return AdminUserVO.builder()
+                .id(user.getId())
+                .nickname(user.getNickname())
+                .phone(user.getPhone())
+                .avatarUrl(avatarUrl(user.getAvatarUrl()))
+                .role(user.getRole())
+                .postCount(postCounts.getOrDefault(user.getId(), 0))
+                .createdAt(user.getCreatedAt())
                 .build();
     }
 
@@ -219,9 +279,13 @@ public class AdminService {
     }
 
     private static String cursorOf(Post post) {
-        long epoch = post.getCreatedAt() == null ? 0
-                : post.getCreatedAt().atZone(ZoneId.systemDefault()).toEpochSecond();
-        return epoch + "_" + post.getId();
+        return cursorOf(post.getCreatedAt(), post.getId());
+    }
+
+    private static String cursorOf(LocalDateTime createdAt, Long id) {
+        long epoch = createdAt == null ? 0
+                : createdAt.atZone(ZoneId.systemDefault()).toEpochSecond();
+        return epoch + "_" + id;
     }
 
     private static PageVO<AdminPostVO> emptyPage() {

@@ -5,7 +5,7 @@
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
         <span>返回</span>
       </button>
-      <h1 class="ad-title">作品管理</h1>
+      <h1 class="ad-title">{{ tab === 'posts' ? '作品管理' : '用户管理' }}</h1>
       <span class="ad-role">管理员</span>
     </header>
 
@@ -17,7 +17,12 @@
       </div>
 
       <template v-else>
-        <section class="ad-filters">
+        <div class="ad-tabs">
+          <button class="ad-tab" :class="{ active: tab === 'posts' }" @click="switchTab('posts')">作品</button>
+          <button class="ad-tab" :class="{ active: tab === 'users' }" @click="switchTab('users')">用户</button>
+        </div>
+
+        <section v-if="tab === 'posts'" class="ad-filters">
           <label class="ad-field">
             <span class="ad-field-label">状态</span>
             <select v-model="filters.status" class="ad-control">
@@ -44,12 +49,23 @@
           </div>
         </section>
 
+        <section v-else class="ad-filters">
+          <label class="ad-field ad-field-wide">
+            <span class="ad-field-label">用户</span>
+            <input v-model.trim="userKeyword" class="ad-control" type="text" placeholder="昵称或手机号" @keyup.enter="search" />
+          </label>
+          <div class="ad-filter-ops">
+            <button class="ad-btn ad-btn-primary" :disabled="loading" @click="search">{{ loading ? '查询中…' : '查询' }}</button>
+            <button class="ad-btn" :disabled="loading" @click="resetUserSearch">重置</button>
+          </div>
+        </section>
+
         <p class="ad-summary">
-          已加载 {{ items.length }} 条
+          已加载 {{ items.length }}{{ tab === 'posts' ? ' 条' : ' 位用户' }}
           <span v-if="items.length && !hasMore">· 没有更多了</span>
         </p>
 
-        <section class="ad-list">
+        <section v-if="tab === 'posts'" class="ad-list">
           <article v-for="p in items" :key="p.id" class="ad-card">
             <img class="ad-cover" :src="p.coverUrl || placeholder" alt="封面" loading="lazy" />
             <div class="ad-main">
@@ -80,6 +96,30 @@
           <p v-if="!items.length && !loading" class="ad-empty">没有符合条件的作品</p>
           <button v-if="hasMore" class="ad-more" :disabled="loading" @click="loadMore">{{ loading ? '加载中…' : '加载更多' }}</button>
         </section>
+
+        <section v-else class="ad-list">
+          <article v-for="u in items" :key="u.id" class="ad-card">
+            <img class="ad-avatar" :src="u.avatarUrl || avatarPlaceholder" alt="头像" loading="lazy" />
+            <div class="ad-main">
+              <div class="ad-line1">
+                <span class="ad-pid">#{{ u.id }}</span>
+                <span v-if="u.role === 'ADMIN'" class="ad-badge ad-badge-admin">管理员</span>
+              </div>
+              <p class="ad-name">{{ u.nickname }}</p>
+              <p class="ad-author">{{ u.phone }}</p>
+              <p class="ad-stats">
+                <span>作品 {{ formatCount(u.postCount) }}</span>
+                <span>注册于 {{ formatDate(u.createdAt) }}</span>
+              </p>
+            </div>
+            <div class="ad-ops">
+              <button class="ad-op ad-op-plain" @click="goUser(u)">看主页</button>
+            </div>
+          </article>
+
+          <p v-if="!items.length && !loading" class="ad-empty">没有符合条件的用户</p>
+          <button v-if="hasMore" class="ad-more" :disabled="loading" @click="loadMore">{{ loading ? '加载中…' : '加载更多' }}</button>
+        </section>
       </template>
     </main>
   </div>
@@ -89,7 +129,7 @@
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { blockAdminPost, deleteAdminPost, fetchAdminMe, fetchAdminPosts, unblockAdminPost } from '../api/admin'
+import { blockAdminPost, deleteAdminPost, fetchAdminMe, fetchAdminPosts, fetchAdminUsers, unblockAdminPost } from '../api/admin'
 
 const router = useRouter()
 
@@ -99,10 +139,13 @@ function syncIsPc() {
 }
 
 const denied = ref(false)
+const tab = ref('posts')
 const loading = ref(false)
 const items = ref([])
 const cursor = ref(null)
 const hasMore = ref(false)
+
+const userKeyword = ref('')
 
 const filters = reactive({
   status: 'ALL',
@@ -129,6 +172,10 @@ const placeholder = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   "<svg xmlns='http://www.w3.org/2000/svg' width='80' height='104'><rect width='80' height='104' rx='10' fill='#2b2b31'/><text x='40' y='62' font-size='26' text-anchor='middle' fill='#6f6f7a' font-family='sans-serif'>拾</text></svg>"
 )
 
+const avatarPlaceholder = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><circle cx='40' cy='40' r='40' fill='#2b2b31'/><text x='40' y='53' font-size='28' text-anchor='middle' fill='#6f6f7a' font-family='sans-serif'>拾</text></svg>"
+)
+
 function statusText(status) {
   return { PUBLISHED: '已发布', PROCESSING: '处理中', FAILED: '失败', BLOCKED: '已下架' }[status] || status
 }
@@ -148,14 +195,20 @@ async function load(reset = false) {
   if (loading.value) return
   loading.value = true
   try {
-    const data = await fetchAdminPosts({
-      status: filters.status === 'ALL' ? '' : filters.status,
-      visibility: filters.visibility === 'ALL' ? '' : filters.visibility,
-      authorKeyword: filters.authorKeyword || '',
-      postId: filters.postId || undefined,
-      cursor: reset ? '' : cursor.value || '',
-      limit: 20
-    })
+    const data = tab.value === 'posts'
+      ? await fetchAdminPosts({
+          status: filters.status === 'ALL' ? '' : filters.status,
+          visibility: filters.visibility === 'ALL' ? '' : filters.visibility,
+          authorKeyword: filters.authorKeyword || '',
+          postId: filters.postId || undefined,
+          cursor: reset ? '' : cursor.value || '',
+          limit: 20
+        })
+      : await fetchAdminUsers({
+          keyword: userKeyword.value || '',
+          cursor: reset ? '' : cursor.value || '',
+          limit: 20
+        })
     const rows = data.items || []
     items.value = reset ? rows : items.value.concat(rows)
     cursor.value = data.nextCursor || null
@@ -166,11 +219,29 @@ async function load(reset = false) {
 }
 
 function search() {
-  if (filters.postId && !/^\d+$/.test(filters.postId)) {
+  if (tab.value === 'posts' && filters.postId && !/^\d+$/.test(filters.postId)) {
     ElMessage.warning('作品 ID 只能是数字')
     return
   }
   load(true)
+}
+
+function switchTab(next) {
+  if (tab.value === next) return
+  tab.value = next
+  items.value = []
+  cursor.value = null
+  hasMore.value = false
+  load(true)
+}
+
+function resetUserSearch() {
+  userKeyword.value = ''
+  load(true)
+}
+
+function goUser(user) {
+  router.push('/user/' + user.id)
 }
 
 function loadMore() {
@@ -330,6 +401,41 @@ onBeforeUnmount(() => {
 }
 
 /* ---------- 筛选 ---------- */
+.ad-tabs {
+  display: flex;
+  gap: 4px;
+  width: fit-content;
+  margin: 4px auto 14px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(38, 34, 31, 0.06);
+}
+
+.ad.dark .ad-tabs {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ad-tab {
+  height: 34px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.ad-tab.active {
+  background: linear-gradient(135deg, #ff7373, #ff5c5c);
+  color: #fff;
+  opacity: 1;
+  box-shadow: 0 6px 14px rgba(255, 92, 92, 0.28);
+}
+
 .ad-filters {
   display: flex;
   flex-wrap: wrap;
@@ -462,6 +568,15 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.2);
 }
 
+.ad-avatar {
+  flex: none;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(0, 0, 0, 0.2);
+}
+
 .ad-main {
   flex: 1;
   min-width: 0;
@@ -497,6 +612,11 @@ onBeforeUnmount(() => {
 
 .ad.dark .ad-badge-plain {
   background: rgba(255, 255, 255, 0.1);
+}
+
+.ad-badge-admin {
+  background: rgba(255, 92, 92, 0.14);
+  color: #ff5c5c;
 }
 
 .ad-status-PUBLISHED {
@@ -601,6 +721,15 @@ onBeforeUnmount(() => {
   color: #f05252;
 }
 
+.ad-op-plain {
+  background: rgba(38, 34, 31, 0.06);
+  color: inherit;
+}
+
+.ad.dark .ad-op-plain {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .ad-empty {
   padding: 40px 0;
   text-align: center;
@@ -660,6 +789,11 @@ onBeforeUnmount(() => {
   .ad-cover {
     width: 58px;
     height: 76px;
+  }
+
+  .ad-avatar {
+    width: 54px;
+    height: 54px;
   }
 
   .ad-ops {

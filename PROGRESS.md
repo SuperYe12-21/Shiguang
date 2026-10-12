@@ -649,3 +649,13 @@
 - 测试：`ImageNormalizerTest` 10 个用例（转码替换/原样放行/URL 与空值/探测失败/转换器故障/批量顺序/brand 判定）；`PostServiceTest` 补 mock；全量 `mvn test` 79 个用例全绿
 - 线上验证：拿那张真 HEIC 重新走一遍「预签名 → 直传（谎报 jpeg）→ 设为头像」，接口返回新 .jpg 对象、库里存裸对象名、新对象文件头 `ffd8ffe0`（真 JPEG）、原 HEIC 对象被自动清掉（404），日志有 `HEIC 已转成 JPEG: ...jpeg -> ...jpg`
 - 数据修复：出问题那位用户（id=362）的头像已转成 512×644 / 39KB 的 JPEG 并改库，OSS 原 HEIC 已删（原始件备份 `/root/avatar-362-original.heic`）
+
+
+### M12 扩展：管理员用户列表（2026-10-12）
+- 需求：管理员要能查看用户列表，按最新注册时间排序
+- 接口：`GET /api/admin/users`（`keyword` 昵称 / 手机号模糊，`cursor`，`limit` 默认 20、上限 50），权限与作品后台一致（每次查库确认 ADMIN，非管理员 403）
+- 排序：`created_at DESC, id DESC`（同一秒注册也稳定），游标复用 feed 的 `epoch_id` 格式，`limit + 1` 判断 hasMore
+- 返回 `AdminUserVO`：id / 昵称 / 手机号 / 头像 / 角色 / 作品数 / 注册时间。作品数用一次 `GROUP BY user_id` 聚合（`selectMaps`，别名直接写驼峰，避开 MyBatis 驼峰映射对 Map 键的影响）
+- 前端：`AdminView.vue` 顶部加「作品 / 用户」标签页；用户页 = 搜索框 + 卡片列表（头像、昵称、手机号、管理员徽标、作品数、注册时间 +「看主页」跳该用户主页），沿用原有 `ad-*` 样式与加载更多
+- 验证：新增 `AdminUsersTest` 3 个用例（非管理员 403、按注册时间倒序 + 游标翻页、手机号搜索）全绿；本地真实数据实测 `#347 彭于烨 posts=8` 与库一致、`limit=1000` 截到 50、第二页游标连续；前端 `npm run build` 通过
+- 备注：本地跑集成测试前要先起 Redis（短信验证码依赖它），否则 `/api/auth/sms-code` 直接 500

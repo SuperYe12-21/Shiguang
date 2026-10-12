@@ -6,6 +6,9 @@ export const fetchAdminMe = () => http.get('/admin/me')
 /** 全量作品列表：status / visibility / authorKeyword / postId / cursor / limit */
 export const fetchAdminPosts = (params) => http.get('/admin/posts', { params })
 
+/** 用户列表：keyword（昵称 / 手机号）/ cursor / limit，按注册时间倒序 */
+export const fetchAdminUsers = (params) => http.get('/admin/users', { params })
+
 /** 下架作品（可填原因，作者可见） */
 export const blockAdminPost = (id, reason) => http.post(`/admin/posts/${id}/block`, { reason: reason || '' })
 
