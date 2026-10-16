@@ -53,11 +53,13 @@
 
 <script setup>
 import { computed, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import { safeReturnTo } from '../auth/redirect'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 
 // 提示只在本地开发构建里出现：生产构建时 import.meta.env.DEV 会被静态替换为 false，
@@ -98,7 +100,7 @@ async function doLogin() {
   try {
     await auth.login(phone.value, code.value)
     ElMessage.success('欢迎回来')
-    router.replace('/feed')
+    await router.replace(safeReturnTo(route.query.redirect, router))
   } catch (e) {
     // 错误提示已由拦截器处理
   } finally {

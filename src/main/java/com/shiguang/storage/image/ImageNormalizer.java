@@ -2,6 +2,8 @@ package com.shiguang.storage.image;
 
 import com.shiguang.common.BizException;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.UploadOwnershipService;
+import com.shiguang.storage.UploadPurpose;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -36,24 +38,26 @@ public class ImageNormalizer {
 
     private final StorageService storageService;
     private final HeifConverter heifConverter;
+    private final UploadOwnershipService uploadOwnershipService;
 
     /** 批量标准化，保持原有顺序 */
-    public List<String> normalizeAll(List<String> objectNames) {
+    public List<String> normalizeAll(Long ownerId, List<String> objectNames) {
         if (objectNames == null || objectNames.isEmpty()) {
             return objectNames;
         }
-        return objectNames.stream().map(this::normalize).toList();
+        return objectNames.stream().map(objectName -> normalize(ownerId, objectName, UploadPurpose.IMAGE)).toList();
     }
 
     /** 返回可直接入库的对象名：HEIC/HEIF 换成转好的 JPEG，其余原样返回 */
-    public String normalize(String objectName) {
-        if (objectName == null || objectName.isBlank() || isExternalUrl(objectName)) {
+    public String normalize(Long ownerId, String objectName, UploadPurpose... purposes) {
+        if (objectName == null || objectName.isBlank()) {
             return objectName;
         }
+        uploadOwnershipService.validateAndBind(ownerId, objectName, purposes);
         if (!isHeif(objectName)) {
             return objectName;
         }
-        return convertToJpeg(objectName);
+        return convertToJpeg(ownerId, objectName);
     }
 
     /** 读头部字节判格式；探测失败就放行，存储抖动不该挡用户发内容 */
@@ -83,7 +87,7 @@ public class ImageNormalizer {
         return false;
     }
 
-    private String convertToJpeg(String objectName) {
+    private String convertToJpeg(Long ownerId, String objectName) {
         Path workDir = null;
         try {
             workDir = Files.createTempDirectory("shiguang-heif-");
@@ -96,7 +100,8 @@ public class ImageNormalizer {
 
             String converted = "images/" + LocalDate.now() + "/" + UUID.randomUUID() + ".jpg";
             storageService.putObject(converted, jpeg.toFile(), "image/jpeg");
-            deleteOriginal(objectName);
+            uploadOwnershipService.registerNormalized(ownerId, objectName, converted);
+            deleteOriginal(ownerId, objectName);
             log.info("HEIC 已转成 JPEG: {} -> {}", objectName, converted);
             return converted;
         } catch (Exception e) {
@@ -108,17 +113,12 @@ public class ImageNormalizer {
     }
 
     /** JPEG 已经入库，原文件留着只会占空间 */
-    private void deleteOriginal(String objectName) {
+    private void deleteOriginal(Long ownerId, String objectName) {
         try {
-            storageService.deleteObject(objectName);
+            uploadOwnershipService.deleteOwnedIfPresent(ownerId, objectName);
         } catch (Exception e) {
             log.warn("HEIC 原文件清理失败: {} ({})", objectName, e.getMessage());
         }
-    }
-
-    /** 兼容历史数据：早期库里存的是完整地址 */
-    private static boolean isExternalUrl(String objectName) {
-        return objectName.startsWith("http://") || objectName.startsWith("https://");
     }
 
     private static void deleteRecursively(Path dir) {

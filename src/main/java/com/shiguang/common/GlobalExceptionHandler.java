@@ -19,6 +19,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
     public ResponseEntity<R<Void>> handleBiz(BizException ex) {
+        if (ex.getCode() == 401) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(R.fail(ex.getCode(), ex.getMessage()));
+        }
         return ResponseEntity.badRequest().body(R.fail(ex.getCode(), ex.getMessage()));
     }
 

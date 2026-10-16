@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shiguang.content.transcode.TranscodePublisher;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.UploadFixtures;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -196,10 +197,11 @@ class InteractionFlowTest {
     }
 
     private long createImagePost(String token, String title) throws Exception {
+        String key = UploadFixtures.uploaded(mockMvc, objectMapper, storageService, token, "IMAGE");
         MvcResult result = mockMvc.perform(post("/api/posts")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"type\":\"IMAGE\",\"title\":\"" + title + "\",\"images\":[\"images/a.jpg\"]}"))
+                        .content(objectMapper.writeValueAsString(java.util.Map.of("type", "IMAGE", "title", title, "images", java.util.List.of(key)))))
                 .andExpect(status().isOk())
                 .andReturn();
         JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -209,10 +211,11 @@ class InteractionFlowTest {
     }
 
     private long createVideoPost(String token) throws Exception {
+        String key = UploadFixtures.uploaded(mockMvc, objectMapper, storageService, token, "VIDEO");
         MvcResult result = mockMvc.perform(post("/api/posts")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"type\":\"VIDEO\",\"title\":\"转码中\",\"videoObject\":\"videos/src.mp4\"}"))
+                        .content(objectMapper.writeValueAsString(java.util.Map.of("type", "VIDEO", "title", "转码中", "videoObject", key))))
                 .andExpect(status().isOk())
                 .andReturn();
         JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());

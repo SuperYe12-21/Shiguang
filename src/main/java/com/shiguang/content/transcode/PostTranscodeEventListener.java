@@ -12,11 +12,19 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class PostTranscodeEventListener {
 
-    private final TranscodePublisher transcodePublisher;
+    private final TranscodeTaskService taskService;
+
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
+    public void register(PostTranscodeRequestedEvent event) {
+        taskService.register(event.postId());
+    }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onRequested(PostTranscodeRequestedEvent event) {
-        log.info("post {} transcode message sent after commit", event.postId());
-        transcodePublisher.send(event.postId());
+        try {
+            taskService.dispatch(event.postId());
+        } catch (Exception exception) {
+            log.warn("作品 {} 已提交，转码投递等待恢复: {}", event.postId(), exception.getMessage());
+        }
     }
 }

@@ -2,10 +2,13 @@ package com.shiguang.user;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shiguang.storage.StorageService;
+import com.shiguang.storage.UploadFixtures;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -28,15 +31,20 @@ class UserUpdateTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @MockBean
+    private StorageService storageService;
+
     private final String phone = "136" + ThreadLocalRandom.current().nextInt(10000000, 99999999);
 
     @Test
     void updateProfileReflectsOnMe() throws Exception {
         String token = login(phone);
+        String key = UploadFixtures.uploaded(mockMvc, objectMapper, storageService, token, "IMAGE");
+        org.mockito.Mockito.when(storageService.publicUrl(key)).thenReturn("https://example.com/a.png");
         mockMvc.perform(put("/api/user/me")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"nickname\":\"拾光小鹿\",\"avatarUrl\":\"https://example.com/a.png\",\"bio\":\"记录生活\"}"))
+                        .content(objectMapper.writeValueAsString(java.util.Map.of("nickname", "拾光小鹿", "avatarUrl", key, "bio", "记录生活"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.nickname").value("拾光小鹿"))

@@ -7,6 +7,9 @@ import com.shiguang.interaction.FavoriteService;
 import com.shiguang.interaction.LikeService;
 import org.springframework.context.ApplicationEventPublisher;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.StorageUploadMapper;
+import com.shiguang.storage.UploadOwnershipService;
+import com.shiguang.storage.UploadPurpose;
 import com.shiguang.storage.image.ImageNormalizer;
 import com.shiguang.user.FollowService;
 import com.shiguang.user.User;
@@ -18,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.io.Serializable;
@@ -26,8 +30,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,6 +49,9 @@ class PostServiceTest {
 
     @Mock
     private StorageService storageService;
+
+    @Mock
+    private UploadOwnershipService uploadOwnershipService;
 
     @Mock
     private ImageNormalizer imageNormalizer;
@@ -76,8 +85,8 @@ class PostServiceTest {
         author.setNickname("作者");
         author.setAvatarUrl("https://example.com/avatar.png");
         lenient().when(userService.getById(7L)).thenReturn(author);
-        lenient().when(imageNormalizer.normalize(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        lenient().when(imageNormalizer.normalizeAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(imageNormalizer.normalize(eq(7L), any(), any(UploadPurpose[].class))).thenAnswer(invocation -> invocation.getArgument(1));
+        lenient().when(imageNormalizer.normalizeAll(eq(7L), any())).thenAnswer(invocation -> invocation.getArgument(1));
     }
 
     private static CreatePostRequest videoRequest(String videoObject) {
@@ -94,6 +103,14 @@ class PostServiceTest {
         request.setTitle("我的图文");
         request.setImages(List.of("images/a.jpg", "images/b.jpg"));
         return request;
+    }
+
+    @Test
+    void imagePostCannotBindAnUnregisteredObject() {
+        UploadOwnershipService ownership = new UploadOwnershipService(mock(StorageUploadMapper.class), storageService);
+        ReflectionTestUtils.setField(postService, "imageNormalizer", new ImageNormalizer(storageService, null, ownership));
+        assertThatThrownBy(() -> postService.create(imageRequest(), 7L))
+                .isInstanceOf(BizException.class);
     }
 
     @Test
@@ -157,10 +174,10 @@ class PostServiceTest {
         verify(postMapper).deleteById((Serializable) 1L);
         verify(likeService).cleanupPost(1L);
         verify(commentService).cleanupPost(1L);
-        verify(storageService).deleteObject("videos/src.mp4");
-        verify(storageService).deleteObject("videos/out.mp4");
-        verify(storageService).deleteObject("covers/c.jpg");
-        verify(storageService).deleteObject("images/a.jpg");
+        verify(uploadOwnershipService).deleteOwnedIfPresent(7L, "videos/src.mp4");
+        verify(uploadOwnershipService).deleteOwnedIfPresent(7L, "videos/out.mp4");
+        verify(uploadOwnershipService).deleteOwnedIfPresent(7L, "covers/c.jpg");
+        verify(uploadOwnershipService).deleteOwnedIfPresent(7L, "images/a.jpg");
     }
 
     @Test
@@ -217,13 +234,17 @@ class PostServiceTest {
         post.setStatus(PostStatus.PROCESSING);
         when(postMapper.selectById(1L)).thenReturn(post);
 
-        postService.markPublished(1L, "videos/out.mp4", "covers/c.jpg");
+        String video = "videos/1/12345678-1234-1234-1234-123456789012.mp4";
+        String cover = "covers/1/12345678-1234-1234-1234-123456789012.jpg";
+        postService.markPublished(1L, video, cover);
 
         ArgumentCaptor<Post> captor = ArgumentCaptor.forClass(Post.class);
         verify(postMapper).updateById((Post) captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(PostStatus.PUBLISHED);
-        assertThat(captor.getValue().getVideoObject()).isEqualTo("videos/out.mp4");
-        assertThat(captor.getValue().getCoverObject()).isEqualTo("covers/c.jpg");
+        assertThat(captor.getValue().getVideoObject()).isEqualTo(video);
+        assertThat(captor.getValue().getCoverObject()).isEqualTo(cover);
+        verify(uploadOwnershipService).registerDerived(7L, video, UploadPurpose.VIDEO);
+        verify(uploadOwnershipService).registerDerived(7L, cover, UploadPurpose.COVER);
     }
 
     @Test
@@ -344,8 +365,8 @@ class PostServiceTest {
         postService.adminDelete(1L);
 
         verify(postMapper).deleteById((Serializable) 1L);
-        verify(storageService).deleteObject("videos/out.mp4");
-        verify(storageService).deleteObject("covers/c.jpg");
+        verify(uploadOwnershipService).deleteOwnedIfPresent(99L, "videos/out.mp4");
+        verify(uploadOwnershipService).deleteOwnedIfPresent(99L, "covers/c.jpg");
         verify(likeService).cleanupPost(1L);
         verify(favoriteService).cleanupPost(1L);
         verify(commentService).cleanupPost(1L);

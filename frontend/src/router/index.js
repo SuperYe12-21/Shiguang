@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { handleOverlayPop, syncOverlayLocation } from '../utils/overlayHistory'
+import { useAuthStore } from '../stores/auth'
+import { loginLocation, safeReturnTo } from '../auth/redirect'
 
 const routes = [
   { path: '/', redirect: '/feed' },
@@ -29,13 +31,15 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to) => {
-  const token = localStorage.getItem('sg_token')
+router.beforeEach((to, from) => {
+  const token = useAuthStore().token
   if (to.meta.requiresAuth && !token) {
-    return { name: 'login' }
+    return loginLocation(to.fullPath, router)
   }
-  if (to.name === 'login' && token) {
-    return { name: 'feed' }
+  if (to.name === 'login') {
+    const redirect = safeReturnTo(to.query.redirect === undefined && from.name !== 'login' ? from.fullPath : to.query.redirect, router)
+    if (token) return redirect
+    if (to.query.redirect !== redirect) return loginLocation(redirect, router)
   }
   return true
 })

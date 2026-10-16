@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shiguang.content.transcode.TranscodePublisher;
 import com.shiguang.storage.PresignResult;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.UploadFixtures;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -73,13 +74,15 @@ class ContentFlowTest {
     @Test
     void createImagePost_publishedAndDetailShowsSignedUrls() throws Exception {
         String token = login(phone);
-        when(storageService.publicUrl("images/a.jpg")).thenReturn("http://127.0.0.1:9000/images/a.jpg?sig=1");
-        when(storageService.publicUrl("images/b.jpg")).thenReturn("http://127.0.0.1:9000/images/b.jpg?sig=2");
+        String first = UploadFixtures.uploaded(mockMvc, objectMapper, storageService, token, "IMAGE");
+        String second = UploadFixtures.uploaded(mockMvc, objectMapper, storageService, token, "IMAGE");
+        when(storageService.publicUrl(first)).thenReturn("http://127.0.0.1:9000/images/a.jpg?sig=1");
+        when(storageService.publicUrl(second)).thenReturn("http://127.0.0.1:9000/images/b.jpg?sig=2");
 
         MvcResult created = mockMvc.perform(post("/api/posts")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"type\":\"IMAGE\",\"title\":\"海边日落\",\"images\":[\"images/a.jpg\",\"images/b.jpg\"]}"))
+                        .content(objectMapper.writeValueAsString(java.util.Map.of("type", "IMAGE", "title", "海边日落", "images", java.util.List.of(first, second)))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
@@ -98,10 +101,11 @@ class ContentFlowTest {
     @Test
     void createVideoPost_goesProcessing() throws Exception {
         String token = login(phone);
+        String key = UploadFixtures.uploaded(mockMvc, objectMapper, storageService, token, "VIDEO");
         mockMvc.perform(post("/api/posts")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"type\":\"VIDEO\",\"title\":\"我的第一支视频\",\"videoObject\":\"videos/src.mp4\"}"))
+                        .content(objectMapper.writeValueAsString(java.util.Map.of("type", "VIDEO", "title", "我的第一支视频", "videoObject", key))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.status").value("PROCESSING"));
@@ -121,11 +125,12 @@ class ContentFlowTest {
     @Test
     void deleteOwnPost_ok_andOthersForbidden() throws Exception {
         String token = login(phone);
+        String key = UploadFixtures.uploaded(mockMvc, objectMapper, storageService, token, "IMAGE");
         when(storageService.publicUrl(anyString())).thenReturn("http://127.0.0.1:9000/x.jpg?sig=1");
         MvcResult created = mockMvc.perform(post("/api/posts")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"type\":\"IMAGE\",\"images\":[\"images/a.jpg\"]}"))
+                        .content(objectMapper.writeValueAsString(java.util.Map.of("type", "IMAGE", "images", java.util.List.of(key)))))
                 .andExpect(status().isOk())
                 .andReturn();
         JsonNode json = objectMapper.readTree(created.getResponse().getContentAsString());

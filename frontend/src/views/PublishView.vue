@@ -89,6 +89,7 @@
         <div v-if="!procFailed" class="proc-spinner"></div>
         <p class="proc-title">{{ procTitle }}</p>
         <p class="proc-sub">{{ procSub }}</p>
+        <button v-if="procFailed && processingPostId" class="proc-back" :disabled="retrying" @click="retryProcessing">{{ retrying ? '重试中…' : '重新处理' }}</button>
         <button v-if="procFailed" class="proc-back" @click="processing = false">返回修改</button>
       </div>
     </div>
@@ -100,7 +101,7 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { presignUpload, createPost, fetchPostDetail } from '../api/posts'
+import { presignUpload, createPost, fetchPostDetail, retryPostTranscode } from '../api/posts'
 import { useFeedStore } from '../stores/feed'
 import { useAuthStore } from '../stores/auth'
 
@@ -108,6 +109,8 @@ const router = useRouter()
 const feed = useFeedStore()
 
 const type = ref('VIDEO')
+const processingPostId = ref(null)
+const retrying = ref(false)
 const title = ref('')
 const description = ref('')
 
@@ -349,6 +352,8 @@ async function submit() {
 
 function waitVideoReady(postId) {
   return new Promise((resolve) => {
+    clearTimer()
+    processingPostId.value = postId
     processing.value = true
     procFailed.value = false
     procTitle.value = '视频转码中…'
@@ -384,6 +389,18 @@ function waitVideoReady(postId) {
       }
     }, 3000)
   })
+}
+
+async function retryProcessing() {
+  if (retrying.value || !processingPostId.value) return
+  retrying.value = true
+  try {
+    await retryPostTranscode(processingPostId.value)
+    await waitVideoReady(processingPostId.value)
+  } catch (error) {
+  } finally {
+    retrying.value = false
+  }
 }
 
 function clearTimer() {

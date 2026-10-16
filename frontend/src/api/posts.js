@@ -32,3 +32,5 @@ export const setPostVisibility = (id, visibility) => http.put(`/posts/${id}/visi
 export const updatePost = (id, payload) => http.put(`/posts/${id}`, payload)
 
 export const deletePost = (id) => http.delete(`/posts/${id}`)
+
+export const retryPostTranscode = (id) => http.post(`/posts/${id}/retry-transcode`)

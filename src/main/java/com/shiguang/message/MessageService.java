@@ -154,7 +154,7 @@ public class MessageService {
                                  List<String> rawImages, Long postId) {
         MessageType type = parseType(rawType);
         String content = rawContent == null ? "" : rawContent.trim();
-        List<String> images = imageNormalizer.normalizeAll(normalizeImages(rawImages));
+        List<String> images = imageNormalizer.normalizeAll(me, normalizeImages(rawImages));
         if (type == MessageType.TEXT && content.isEmpty()) {
             throw new BizException(1, "消息不能为空");
         }

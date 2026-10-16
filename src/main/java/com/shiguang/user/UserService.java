@@ -7,12 +7,14 @@ import com.shiguang.content.PostMapper;
 import com.shiguang.content.PostStatus;
 import com.shiguang.interaction.LikeService;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.UploadPurpose;
 import com.shiguang.storage.image.ImageNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -109,7 +111,11 @@ public class UserService {
     public User updateProfile(Long userId, String nickname, String avatarUrl, String bio) {
         User user = getById(userId);
         user.setNickname(nickname);
-        user.setAvatarUrl(imageNormalizer.normalize(avatarUrl));
+        String avatar = avatarUrl == null ? "" : avatarUrl.trim();
+        String current = user.getAvatarUrl();
+        if (!Objects.equals(avatar, current) && !Objects.equals(avatar, toAvatarUrl(current))) {
+            user.setAvatarUrl(imageNormalizer.normalize(userId, avatar, UploadPurpose.IMAGE));
+        }
         user.setBio(bio);
         userMapper.updateById(user);
         return user;

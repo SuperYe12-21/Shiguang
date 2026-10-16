@@ -26,6 +26,9 @@
       <!-- 主菜单 -->
       <template v-else>
         <p class="pm-title">作品设置</p>
+        <button v-if="post.type === 'VIDEO' && post.status === 'FAILED'" class="pm-item" :disabled="busy" @click="retryTranscode">
+          <span class="pm-label">{{ busy ? '正在重试…' : '重新处理视频' }}</span>
+        </button>
         <div class="pm-item" @click="toggleVisibility">
           <span class="pm-ico">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 12c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" /></svg>
@@ -53,7 +56,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { deletePost, setPostVisibility, updatePost } from '../api/posts'
+import { deletePost, retryPostTranscode, setPostVisibility, updatePost } from '../api/posts'
 
 const props = defineProps({
   post: { type: Object, required: true }
@@ -68,6 +71,20 @@ const confirming = ref(false)
 const editTitle = ref('')
 const editDesc = ref('')
 const isPrivate = computed(() => props.post.visibility === 'PRIVATE')
+
+async function retryTranscode() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    await retryPostTranscode(props.post.id)
+    emit('updated', { id: props.post.id, status: 'PROCESSING', failReason: '' })
+    ElMessage.success('已重新开始处理，可在个人主页查看')
+    emit('close')
+  } catch (error) {
+  } finally {
+    busy.value = false
+  }
+}
 
 async function toggleVisibility() {
   if (busy.value) return
@@ -204,6 +221,19 @@ async function doDelete() {
   cursor: pointer;
   font-size: 15px;
   transition: background 0.15s;
+}
+
+button.pm-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+button.pm-item:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .pm-item:hover {

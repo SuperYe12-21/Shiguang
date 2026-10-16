@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.UploadFixtures;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -183,12 +184,14 @@ class FollowFlowTest {
         String tokenA = loginNew();
         String tokenB = loginNew();
         long idB = userIdOf(tokenB);
+        String image = UploadFixtures.uploaded(mockMvc, objectMapper, storageService, tokenA, "IMAGE");
+        String video = UploadFixtures.uploaded(mockMvc, objectMapper, storageService, tokenB, "VIDEO");
 
         // A 发布一篇图文，B 发布一篇转码中的视频（不计入）
         MvcResult created = mockMvc.perform(post("/api/posts")
                         .header("Authorization", "Bearer " + tokenA)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"type\":\"IMAGE\",\"title\":\"主页统计测试\",\"images\":[\"images/a.jpg\"]}"))
+                        .content(objectMapper.writeValueAsString(Map.of("type", "IMAGE", "title", "主页统计测试", "images", List.of(image)))))
                 .andExpect(status().isOk())
                 .andReturn();
         long postId = objectMapper.readTree(created.getResponse().getContentAsString()).path("data").path("id").asLong();
@@ -197,7 +200,7 @@ class FollowFlowTest {
         MvcResult createdVideo = mockMvc.perform(post("/api/posts")
                         .header("Authorization", "Bearer " + tokenB)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"type\":\"VIDEO\",\"title\":\"转码中\",\"videoObject\":\"videos/src.mp4\"}"))
+                        .content(objectMapper.writeValueAsString(Map.of("type", "VIDEO", "title", "转码中", "videoObject", video))))
                 .andExpect(status().isOk())
                 .andReturn();
         long videoId = objectMapper.readTree(createdVideo.getResponse().getContentAsString()).path("data").path("id").asLong();

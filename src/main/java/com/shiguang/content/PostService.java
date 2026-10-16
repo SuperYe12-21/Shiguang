@@ -6,6 +6,8 @@ import com.shiguang.interaction.CommentService;
 import com.shiguang.interaction.FavoriteService;
 import com.shiguang.interaction.LikeService;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.UploadOwnershipService;
+import com.shiguang.storage.UploadPurpose;
 import com.shiguang.storage.image.ImageNormalizer;
 import com.shiguang.user.User;
 import com.shiguang.user.FollowService;
@@ -27,6 +29,7 @@ public class PostService {
     private final PostMapper postMapper;
     private final UserService userService;
     private final StorageService storageService;
+    private final UploadOwnershipService uploadOwnershipService;
     private final ImageNormalizer imageNormalizer;
     private final LikeService likeService;
     private final FavoriteService favoriteService;
@@ -43,7 +46,7 @@ public class PostService {
         post.setType(type);
         post.setTitle(trimToNull(request.getTitle()));
         post.setDescription(trimToNull(request.getDescription()));
-        post.setCoverObject(imageNormalizer.normalize(trimToNull(request.getCoverObject())));
+        post.setCoverObject(imageNormalizer.normalize(userId, trimToNull(request.getCoverObject()), UploadPurpose.COVER, UploadPurpose.IMAGE));
         post.setVisibility(PostVisibility.PUBLIC);
         post.setLikeCount(0);
         post.setCommentCount(0);
@@ -53,13 +56,18 @@ public class PostService {
                 throw new BizException("视频作品必须提供 videoObject");
             }
             post.setSourceObject(request.getVideoObject().trim());
+            uploadOwnershipService.validateAndBind(userId, post.getSourceObject(), UploadPurpose.VIDEO);
             post.setStatus(PostStatus.PROCESSING);
         } else {
             if (request.getImages() == null || request.getImages().isEmpty()) {
                 throw new BizException("图文作品必须提供至少一张图片");
             }
             // 前端直传只看扩展名，可能混进 HEIC（iPhone 默认格式），入库前统一转成 JPEG
-            post.setImagesObject(imageNormalizer.normalizeAll(request.getImages().stream().map(String::trim).toList()));
+            List<String> images = request.getImages();
+            if (images.stream().anyMatch(image -> image == null || image.isBlank())) {
+                throw new BizException("图片对象名不能为空");
+            }
+            post.setImagesObject(imageNormalizer.normalizeAll(userId, images.stream().map(String::trim).toList()));
             post.setStatus(PostStatus.PUBLISHED);
         }
         postMapper.insert(post);
@@ -147,11 +155,11 @@ public class PostService {
 
     private void deleteInternal(Post post) {
         Long id = post.getId();
-        deleteObjects(post);
         postMapper.deleteById(id);
         likeService.cleanupPost(id);
         favoriteService.cleanupPost(id);
         commentService.cleanupPost(id);
+        deleteObjects(post);
         eventPublisher.publishEvent(new PostDeletedEvent(id));
     }
 
@@ -176,11 +184,18 @@ public class PostService {
         return toVO(post);
     }
 
+    @Transactional
     public void markPublished(Long postId, String videoObject, String coverObject) {
         Post post = requirePost(postId);
         if (post.getStatus() != PostStatus.PROCESSING) {
             return;
         }
+        if (videoObject == null || !videoObject.matches("videos/" + postId + "/[a-fA-F0-9-]{36}\\.mp4")
+                || coverObject == null || !coverObject.matches("covers/" + postId + "/[a-fA-F0-9-]{36}\\.jpg")) {
+            throw new BizException("转码产物对象名非法");
+        }
+        uploadOwnershipService.registerDerived(post.getUserId(), videoObject, UploadPurpose.VIDEO);
+        uploadOwnershipService.registerDerived(post.getUserId(), coverObject, UploadPurpose.COVER);
         post.setVideoObject(videoObject);
         post.setCoverObject(coverObject);
         post.setStatus(PostStatus.PUBLISHED);
@@ -269,20 +284,20 @@ public class PostService {
     }
 
     private void deleteObjects(Post post) {
-        safeDelete(post.getSourceObject());
-        safeDelete(post.getVideoObject());
-        safeDelete(post.getCoverObject());
+        safeDelete(post.getUserId(), post.getSourceObject());
+        safeDelete(post.getUserId(), post.getVideoObject());
+        safeDelete(post.getUserId(), post.getCoverObject());
         if (post.getImagesObject() != null) {
-            post.getImagesObject().forEach(this::safeDelete);
+            post.getImagesObject().forEach(objectName -> safeDelete(post.getUserId(), objectName));
         }
     }
 
-    private void safeDelete(String objectName) {
+    private void safeDelete(Long ownerId, String objectName) {
         if (isBlank(objectName)) {
             return;
         }
         try {
-            storageService.deleteObject(objectName);
+            uploadOwnershipService.deleteOwnedIfPresent(ownerId, objectName);
         } catch (Exception e) {
             log.warn("删除存储对象失败: {}", objectName, e);
         }

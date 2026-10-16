@@ -1,12 +1,12 @@
 package com.shiguang.feed;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.shiguang.common.counter.RecoverableCounterBuffer;
 import com.shiguang.content.Post;
 import com.shiguang.content.PostMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.util.Collection;
@@ -28,15 +28,9 @@ public class ViewCountService {
 
     private static final String DUP_PREFIX = "view:dup:";
 
-    private static final DefaultRedisScript<List<Object>> POP_PENDING_SCRIPT = new DefaultRedisScript<>(
-            "local f = redis.call('HGETALL', KEYS[1]); "
-                    + "if #f == 0 then return {} end; "
-                    + "redis.call('DEL', KEYS[1]); "
-                    + "return f",
-            (Class<List<Object>>) (Class<?>) List.class);
-
     private final StringRedisTemplate redis;
     private final PostMapper postMapper;
+    private final RecoverableCounterBuffer counterBuffer;
 
     /**
      * 记一次有效播放：同一用户同一作品 24 小时内只计一次，避免重复观看刷量。
@@ -57,28 +51,18 @@ public class ViewCountService {
         }
     }
 
-    /** 批量取 pending 增量（一次 Redis 往返）；Redis 异常时返回空 map（展示降级为仅数据库值） */
+    /** 批量取未提交增量，按数据库收据排除已提交批次；异常时展示降级为仅数据库值 */
     public Map<Long, Long> pendingDeltas(Collection<Long> postIds) {
         if (postIds == null || postIds.isEmpty()) {
             return Map.of();
         }
         List<Long> distinct = postIds.stream().distinct().toList();
         try {
-            List<String> values = redis.<String, String>opsForHash().multiGet(PENDING_KEY,
+            Map<String, Long> values = counterBuffer.pendingDeltas("view", PENDING_KEY,
                     distinct.stream().map(id -> "p:" + id).toList());
             Map<Long, Long> result = new HashMap<>();
-            if (values == null) {
-                return result;
-            }
-            for (int i = 0; i < distinct.size(); i++) {
-                Object value = values.get(i);
-                if (value != null) {
-                    try {
-                        result.put(distinct.get(i), Long.parseLong(value.toString()));
-                    } catch (NumberFormatException ignored) {
-                        // 非法值按 0 处理
-                    }
-                }
+            for (Long postId : distinct) {
+                result.put(postId, values.getOrDefault("p:" + postId, 0L));
             }
             return result;
         } catch (Exception e) {
@@ -87,39 +71,14 @@ public class ViewCountService {
         }
     }
 
-    /** 把 pending 增量原子地搬到数据库（由定时任务调用） */
+    /** 恢复或暂存一批增量，事务落库后确认（由定时任务调用） */
     public void flushPendingCounts() {
-        List<Object> popped;
-        try {
-            popped = redis.execute(POP_PENDING_SCRIPT, List.of(PENDING_KEY));
-        } catch (Exception e) {
-            log.warn("播放量增量弹出失败: {}", e.getMessage());
-            return;
-        }
-        if (popped == null || popped.isEmpty()) {
-            return;
-        }
-        for (int i = 0; i + 1 < popped.size(); i += 2) {
-            String field = (String) popped.get(i);
-            long delta;
-            try {
-                delta = Long.parseLong((String) popped.get(i + 1));
-            } catch (Exception e) {
-                log.warn("播放量增量非法: field={} value={}", field, popped.get(i + 1));
-                continue;
-            }
-            try {
-                applyDelta(field, delta);
-            } catch (Exception e) {
-                log.error("播放量落库失败，回滚 pending: field={}", field, e);
-                redis.opsForHash().increment(PENDING_KEY, field, delta);
-            }
-        }
+        counterBuffer.flush("view", PENDING_KEY, this::applyDelta);
     }
 
     private void applyDelta(String field, long delta) {
         if (!field.startsWith("p:")) {
-            return;
+            throw new IllegalArgumentException("Invalid view counter field: " + field);
         }
         Long postId = Long.parseLong(field.substring(2));
         postMapper.update(null, new LambdaUpdateWrapper<Post>()

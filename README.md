@@ -2,7 +2,7 @@
 
 清新明亮的短视频 & 图文分享社交平台 · 求职作品
 
-抖音式竖屏信息流，手机 / PC 双端自适应。从发布到播放是一条完整的媒体流水线：**预签名直传对象存储 → 消息队列异步转码 → 后端流式代理播放**。
+抖音式竖屏信息流，手机 / PC 双端自适应。从发布到播放是一条完整的媒体流水线：**预签名直传对象存储 → 消息队列异步转码 → 播放成品**。生产媒体直连阿里云 OSS，本地 MinIO 模式支持后端 Range 代理。
 
 <!-- 截图占位：上线后在此补充产品截图（建议：移动端信息流 / PC 首页 / 发布页 / 评论区 / 私信 / 个人主页） -->
 
@@ -10,8 +10,8 @@
 
 **内容与发布**
 - 视频 / 图文发布（图文最多 18 张）、封面可选，发布前本地预览与上传进度
-- MinIO 预签名直传：大文件不占用应用服务器的带宽与磁盘
-- RabbitMQ + FFmpeg 异步转码：1080P / 30fps / 限码率，自动抽取封面、清理源文件
+- OSS / MinIO 预签名直传，服务端校验文件归属、用途、类型和大小
+- RabbitMQ + FFmpeg 异步转码：1080P / 30fps / 限码率，自动抽取封面、清理源文件；任务持久化、有限重试与超时补偿
 - 作品管理：仅自己可见、编辑文案、删除（含存储对象清理）
 
 **信息流**
@@ -21,7 +21,7 @@
 - 可拖动进度条（拖动显示时间气泡）、多图左右滑动、单作品页
 
 **互动**
-- 点赞、收藏（乐观更新；计数按实际数据聚合，不维护冗余计数以免漂移）
+- 点赞、收藏（乐观更新；点赞 / 播放增量经 Redis 缓冲落库，批次回执防重放，展示计数最终一致）
 - 二级评论：回复默认折叠、@ 提示、作者标签、图片评论（≤3 张）、级联删除
 - 分享面板：把作品卡片发给最近聊过的好友 / 复制链接
 
@@ -35,7 +35,7 @@
 - 会话列表、未读合并红点
 
 **账号**
-- 手机号 + 验证码登录（开发环境固定 123456）、JWT 双令牌（访问 + 刷新）
+- 手机号 + 验证码登录（开发环境固定 123456）、JWT 双令牌及并发请求单次续期
 - 资料编辑、头像上传
 
 ## 技术栈
@@ -43,40 +43,39 @@
 | 层 | 技术 |
 | --- | --- |
 | 后端 | Java 21 · Spring Boot 3.5 · Maven · MyBatis-Plus · Spring Security + JWT · WebSocket |
-| 中间件 | MySQL 8 · Redis（验证码限流 / 观看历史 / 首页缓存）· RabbitMQ（转码队列）· MinIO（S3 兼容对象存储）· FFmpeg |
+| 中间件 | MySQL 8 · Redis（验证码限流 / 观看历史 / 首页缓存 / 计数缓冲）· RabbitMQ（转码队列）· 阿里云 OSS / MinIO · FFmpeg |
 | 前端 | Vue 3 · Vite · Pinia · Element Plus · 手机 / PC 双端自适应 |
 
 ## 架构速览：媒体流水线
 
 ```mermaid
 flowchart LR
-  B[浏览器] -- 1 预签名直传 --> M[(MinIO)]
+  B[浏览器] -- 1 预签名直传 --> M[(OSS / MinIO)]
   B -- 2 创建作品 --> A[Spring Boot]
-  A -- 3 事务提交后发消息 --> Q[(RabbitMQ)]
+  A -- 3 同事务登记任务 / 提交后投递 --> Q[(RabbitMQ)]
   Q -- 4 消费 --> W[转码 Worker]
   M -- 5 拉取源文件 --> W
   W -- 6 转码 + 抽封面 --> W
   W -- 7 回传成品 --> M
   W -- 8 状态置 PUBLISHED --> A
-  B -- 9 /api/media 播放（Range）--> A
-  A -- 流式代理 --> M
+  B -- 9 生产直连 / 本地 Range 代理 --> M
 ```
 
 **关键设计**
-- 文件不经过应用服务器：上传走预签名直传，播放走后端 Range 流式代理（支持拖动进度条与长缓存）
-- 转码全程异步：事务提交后才投递消息；消费幂等（状态非 PROCESSING 直接跳过），失败标记可追踪
-- 对象名带随机 UUID、内容不变 → 可加 `immutable` 长缓存；存储层接口化，可无缝切换阿里云 OSS / 腾讯云 COS
+- 上传走预签名直传；转码时后端下载源文件并上传成品，生产播放直连 OSS
+- 转码任务与作品同事务登记；提交后投递，租约防止重复任务覆盖，临时故障可补偿，作者可重试失败作品
+- 对象名带随机 UUID，上传归属入库；存储层已实现 OSS / MinIO 两种适配
 - 游标分页、乐观更新、幂等点赞 / 收藏、通知折叠等细节见 `docs/` 设计文档
 
 ## 项目结构
 
 ```
-db/init/            数据库脚本：001 全量建库 + 002~012 里程碑增量
+db/init/            数据库脚本：001 全量建库 + 002~015 里程碑增量
 src/main/java/com/shiguang/
   auth/             验证码登录、JWT 双令牌
   user/             用户、关注 / 粉丝、隐私设置
   content/          作品发布 + 转码状态机（transcode/ 子包：RabbitMQ + FFmpeg）
-  storage/          存储抽象：MinIO 预签名直传 / 媒体 Range 代理
+  storage/          存储抽象：OSS / MinIO 直传、归属校验、媒体 Range 代理
   feed/             信息流、观看历史、点赞 / 收藏列表
   interaction/      点赞、收藏、评论（二级回复、评论图片）
   notification/     通知中心（折叠 / 未读 / 定时清理）
@@ -93,8 +92,9 @@ docs/               设计文档与实施计划
 依赖：JDK 21、MySQL 8（库 `shiguang`）、Redis、MinIO、RabbitMQ、FFmpeg。
 
 ```powershell
-# 1. 初始化数据库（001 建库建表；002~012 为里程碑增量，按编号顺序）
-Get-ChildItem db\init\*.sql | Sort-Object Name | ForEach-Object { mysql -uroot -p < $_.FullName }
+# 1. 初始化空数据库（已有数据库只执行尚未应用的增量，按编号顺序）
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+Get-ChildItem db\init\*.sql | Sort-Object Name | ForEach-Object { Get-Content -Raw -Encoding UTF8 $_.FullName | mysql -uroot -p --default-character-set=utf8mb4 }
 
 # 2. 一键启动（中间件 + 后端 8080 + 前端 5173）
 powershell -ExecutionPolicy Bypass -File .devtools\start-all.ps1
@@ -118,7 +118,8 @@ UPDATE `user` SET `role` = 'ADMIN' WHERE `phone` = '<管理员手机号>';
 
 ## 测试
 
-- 后端：15 个测试类 / 69 个用例（登录、发布状态机、转码、关注、互动与并发点赞、管理员）
+- 后端：`.\mvnw.cmd test`（登录、上传归属、转码恢复、计数恢复、关注、互动与并发点赞、管理员）
+- 前端认证回归：在 `frontend` 下执行 `node --test tests/auth.test.mjs`
 - 端到端：移动端 430×900 与 PC 1400×900 双端无头浏览器回归（Edge CDP）
 
 ## 里程碑
@@ -136,3 +137,4 @@ UPDATE `user` SET `role` = 'ADMIN' WHERE `phone` = '<管理员手机号>';
 - M11 播放量统计：有效观看上报、进度条、断点续播
 - M12 管理员作品管理：角色权限、全量作品筛选、下架 / 恢复 / 删除
 - M13 部署上线（进行中）：Nginx 托管前端 + 反代 /api、/ws，systemd 托管后端 jar（前端已按路由拆包，dist 574KB）
+- M14 第一轮可靠性：上传归属、登录续期、计数批次恢复、转码补偿；升级顺序与限制见 `docs/reliability-rollout.md`

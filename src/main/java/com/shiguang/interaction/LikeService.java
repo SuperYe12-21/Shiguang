@@ -3,6 +3,7 @@ package com.shiguang.interaction;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.shiguang.common.BizException;
+import com.shiguang.common.counter.RecoverableCounterBuffer;
 import com.shiguang.content.Post;
 import com.shiguang.content.PostMapper;
 import com.shiguang.content.PostStatus;
@@ -25,7 +26,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * 点赞服务：Redis Set 记录「谁赞了」，计数走 like:pending 缓冲，
@@ -45,12 +48,16 @@ public class LikeService {
     private static final String COMMENT_INIT_PREFIX = "like:init:comment:";
     private static final Duration INIT_MARKER_TTL = Duration.ofHours(1);
 
-    private static final DefaultRedisScript<List<Object>> POP_PENDING_SCRIPT = new DefaultRedisScript<>(
-            "local f = redis.call('HGETALL', KEYS[1]); "
-                    + "if #f == 0 then return {} end; "
-                    + "redis.call('DEL', KEYS[1]); "
-                    + "return f",
-            (Class<List<Object>>) (Class<?>) List.class);
+    private static final DefaultRedisScript<Long> UPDATE_MEMBERSHIP = new DefaultRedisScript<>("""
+            if ARGV[2] == '1' then
+                redis.call('SADD', KEYS[1], ARGV[1])
+            else
+                redis.call('SREM', KEYS[1], ARGV[1])
+            end
+            return redis.call('HINCRBY', KEYS[2], ARGV[3], ARGV[4])
+            """, Long.class);
+
+    private final Object[] mutationLocks = IntStream.range(0, 64).mapToObj(index -> new Object()).toArray();
 
     private final StringRedisTemplate redis;
     private final PostMapper postMapper;
@@ -58,51 +65,56 @@ public class LikeService {
     private final CommentMapper commentMapper;
     private final CommentLikeMapper commentLikeMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final RecoverableCounterBuffer counterBuffer;
 
     public LikeVO likePost(Long postId, Long userId) {
-        Post post = requireAccessiblePost(postId, userId);
-        ensurePostLikedInitialized(postId);
-        if (addMember(postSetKey(postId), userId)) {
-            incrPending("p:" + postId, 1);
-            insertIgnore(postLikeMapper, new PostLike(postId, userId));
-            eventPublisher.publishEvent(new PostLikedEvent(postId, userId));
+        synchronized (mutationLock("p:" + postId)) {
+            Post post = requireAccessiblePost(postId, userId);
+            ensurePostLikedInitialized(postId);
+            boolean inserted = insertIgnore(postLikeMapper, new PostLike(postId, userId));
+            updateMembership(postSetKey(postId), userId, true, "p:" + postId, inserted ? 1 : 0);
+            if (inserted) {
+                eventPublisher.publishEvent(new PostLikedEvent(postId, userId));
+            }
+            return postState(post, userId);
         }
-        return postState(post, userId);
     }
 
     public LikeVO unlikePost(Long postId, Long userId) {
-        Post post = requireAccessiblePost(postId, userId);
-        ensurePostLikedInitialized(postId);
-        if (removeMember(postSetKey(postId), userId)) {
-            incrPending("p:" + postId, -1);
-            postLikeMapper.delete(new LambdaQueryWrapper<PostLike>()
+        synchronized (mutationLock("p:" + postId)) {
+            Post post = requireAccessiblePost(postId, userId);
+            ensurePostLikedInitialized(postId);
+            int deleted = postLikeMapper.delete(new LambdaQueryWrapper<PostLike>()
                     .eq(PostLike::getPostId, postId)
                     .eq(PostLike::getUserId, userId));
+            updateMembership(postSetKey(postId), userId, false, "p:" + postId, -deleted);
+            return postState(post, userId);
         }
-        return postState(post, userId);
     }
 
     public LikeVO likeComment(Long commentId, Long userId) {
-        Comment comment = requireComment(commentId);
-        ensureCommentLikedInitialized(commentId);
-        if (addMember(commentSetKey(commentId), userId)) {
-            incrPending("c:" + commentId, 1);
-            insertIgnore(commentLikeMapper, new CommentLike(commentId, userId));
-            eventPublisher.publishEvent(new CommentLikedEvent(commentId, userId));
+        synchronized (mutationLock("c:" + commentId)) {
+            Comment comment = requireComment(commentId);
+            ensureCommentLikedInitialized(commentId);
+            boolean inserted = insertIgnore(commentLikeMapper, new CommentLike(commentId, userId));
+            updateMembership(commentSetKey(commentId), userId, true, "c:" + commentId, inserted ? 1 : 0);
+            if (inserted) {
+                eventPublisher.publishEvent(new CommentLikedEvent(commentId, userId));
+            }
+            return commentState(comment, userId);
         }
-        return commentState(comment, userId);
     }
 
     public LikeVO unlikeComment(Long commentId, Long userId) {
-        Comment comment = requireComment(commentId);
-        ensureCommentLikedInitialized(commentId);
-        if (removeMember(commentSetKey(commentId), userId)) {
-            incrPending("c:" + commentId, -1);
-            commentLikeMapper.delete(new LambdaQueryWrapper<CommentLike>()
+        synchronized (mutationLock("c:" + commentId)) {
+            Comment comment = requireComment(commentId);
+            ensureCommentLikedInitialized(commentId);
+            int deleted = commentLikeMapper.delete(new LambdaQueryWrapper<CommentLike>()
                     .eq(CommentLike::getCommentId, commentId)
                     .eq(CommentLike::getUserId, userId));
+            updateMembership(commentSetKey(commentId), userId, false, "c:" + commentId, -deleted);
+            return commentState(comment, userId);
         }
-        return commentState(comment, userId);
     }
 
     /** 详情页：是否已点赞（未登录为 false） */
@@ -114,7 +126,7 @@ public class LikeService {
         return Boolean.TRUE.equals(redis.opsForSet().isMember(postSetKey(postId), userId.toString()));
     }
 
-    /** 当前待落库的点赞净增量 */
+    /** 当前待落库的点赞净增量，包括尚未提交的 in-flight 批次 */
     public int postPendingDelta(Long postId) {
         return pendingDelta("p:" + postId);
     }
@@ -123,7 +135,7 @@ public class LikeService {
         return pendingDelta("c:" + commentId);
     }
 
-    /** 批量取 pending 增量（一次 Redis 往返） */
+    /** 批量取未提交增量，in-flight 批次按数据库收据排除 */
     public Map<Long, Integer> postPendingDeltas(Collection<Long> postIds) {
         return pendingDeltas(postIds, "p:");
     }
@@ -163,28 +175,9 @@ public class LikeService {
         redis.opsForHash().delete(PENDING_KEY, "c:" + commentId);
     }
 
-    /** 把 pending 净增量原子地搬到数据库（由定时任务调用） */
+    /** 恢复或暂存一批净增量，事务落库后确认（由定时任务调用） */
     public void flushPendingCounts() {
-        List<Object> popped = redis.execute(POP_PENDING_SCRIPT, List.of(PENDING_KEY));
-        if (popped == null || popped.isEmpty()) {
-            return;
-        }
-        for (int i = 0; i + 1 < popped.size(); i += 2) {
-            String field = (String) popped.get(i);
-            long delta;
-            try {
-                delta = Long.parseLong((String) popped.get(i + 1));
-            } catch (Exception e) {
-                log.warn("like pending 增量非法: field={} value={}", field, popped.get(i + 1));
-                continue;
-            }
-            try {
-                applyDelta(field, delta);
-            } catch (Exception e) {
-                log.error("点赞计数落库失败，回滚 pending: field={}", field, e);
-                redis.opsForHash().increment(PENDING_KEY, field, delta);
-            }
-        }
+        counterBuffer.flush("like", PENDING_KEY, this::applyDelta);
     }
 
     public Post requirePublishedPost(Long postId) {
@@ -220,12 +213,14 @@ public class LikeService {
             Long postId = Long.parseLong(field.substring(2));
             postMapper.update(null, new LambdaUpdateWrapper<Post>()
                     .eq(Post::getId, postId)
-                    .setSql("like_count = GREATEST(0, like_count + " + delta + ")"));
+                    .setSql("like_count = GREATEST(0, CAST(like_count AS SIGNED) + " + delta + ")"));
         } else if (field.startsWith("c:")) {
             Long commentId = Long.parseLong(field.substring(2));
             commentMapper.update(null, new LambdaUpdateWrapper<Comment>()
                     .eq(Comment::getId, commentId)
-                    .setSql("like_count = GREATEST(0, like_count + " + delta + ")"));
+                    .setSql("like_count = GREATEST(0, CAST(like_count AS SIGNED) + " + delta + ")"));
+        } else {
+            throw new IllegalArgumentException("Invalid like counter field: " + field);
         }
     }
 
@@ -248,15 +243,8 @@ public class LikeService {
     }
 
     private int pendingDelta(String field) {
-        Object value = redis.opsForHash().get(PENDING_KEY, field);
-        if (value == null) {
-            return 0;
-        }
-        try {
-            return Integer.parseInt(value.toString());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        return Math.toIntExact(counterBuffer.pendingDeltas("like", PENDING_KEY, List.of(field))
+                .getOrDefault(field, 0L));
     }
 
     private Map<Long, Integer> pendingDeltas(Collection<Long> ids, String prefix) {
@@ -264,18 +252,11 @@ public class LikeService {
             return Map.of();
         }
         List<Long> distinct = ids.stream().distinct().toList();
-        List<String> values = redis.<String, String>opsForHash().multiGet(PENDING_KEY,
+        Map<String, Long> values = counterBuffer.pendingDeltas("like", PENDING_KEY,
                 distinct.stream().map(id -> prefix + id).toList());
         Map<Long, Integer> result = new HashMap<>();
-        for (int i = 0; i < distinct.size(); i++) {
-            Object value = values.get(i);
-            if (value != null) {
-                try {
-                    result.put(distinct.get(i), Integer.parseInt(value.toString()));
-                } catch (NumberFormatException ignored) {
-                    // 非法值按 0 处理
-                }
-            }
+        for (Long identifier : distinct) {
+            result.put(identifier, Math.toIntExact(values.getOrDefault(prefix + identifier, 0L)));
         }
         return result;
     }
@@ -295,44 +276,41 @@ public class LikeService {
         return result;
     }
 
-    private boolean addMember(String setKey, Long userId) {
-        Long added = redis.opsForSet().add(setKey, userId.toString());
-        return added != null && added > 0;
+    private void updateMembership(String setKey, Long userId, boolean liked, String field, long delta) {
+        redis.execute(UPDATE_MEMBERSHIP, List.of(setKey, PENDING_KEY), userId.toString(),
+                liked ? "1" : "0", field, Long.toString(delta));
     }
 
-    private boolean removeMember(String setKey, Long userId) {
-        Long removed = redis.opsForSet().remove(setKey, userId.toString());
-        return removed != null && removed > 0;
+    private Object mutationLock(String field) {
+        return mutationLocks[Math.floorMod(field.hashCode(), mutationLocks.length)];
     }
 
-    private void incrPending(String field, long delta) {
-        redis.opsForHash().increment(PENDING_KEY, field, delta);
-    }
-
-    private <T> void insertIgnore(com.baomidou.mybatisplus.core.mapper.BaseMapper<T> mapper, T entity) {
+    private <T> boolean insertIgnore(com.baomidou.mybatisplus.core.mapper.BaseMapper<T> mapper, T entity) {
         try {
-            mapper.insert(entity);
+            return mapper.insert(entity) > 0;
         } catch (DuplicateKeyException e) {
             log.debug("重复点赞记录，忽略: {}", entity);
+            return false;
         }
     }
 
     private void ensurePostLikedInitialized(Long postId) {
         ensureInitialized(postSetKey(postId), POST_INIT_PREFIX + postId,
-                postLikeMapper.selectList(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, postId))
+                () -> postLikeMapper.selectList(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, postId))
                         .stream().map(PostLike::getUserId).toList());
     }
 
     private void ensureCommentLikedInitialized(Long commentId) {
         ensureInitialized(commentSetKey(commentId), COMMENT_INIT_PREFIX + commentId,
-                commentLikeMapper.selectList(new LambdaQueryWrapper<CommentLike>().eq(CommentLike::getCommentId, commentId))
+                () -> commentLikeMapper.selectList(new LambdaQueryWrapper<CommentLike>().eq(CommentLike::getCommentId, commentId))
                         .stream().map(CommentLike::getUserId).toList());
     }
 
-    private void ensureInitialized(String setKey, String initKey, List<Long> userIds) {
+    private void ensureInitialized(String setKey, String initKey, Supplier<List<Long>> loadUserIds) {
         if (Boolean.TRUE.equals(redis.hasKey(setKey)) || Boolean.TRUE.equals(redis.hasKey(initKey))) {
             return;
         }
+        List<Long> userIds = loadUserIds.get();
         Boolean claimed = redis.opsForValue().setIfAbsent(initKey, "1", INIT_MARKER_TTL);
         if (Boolean.TRUE.equals(claimed)) {
             if (!userIds.isEmpty()) {

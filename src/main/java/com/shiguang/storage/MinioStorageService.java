@@ -73,6 +73,9 @@ public class MinioStorageService implements StorageService {
 
     @Override
     public String publicUrl(String objectName) {
+        if (objectName.startsWith("http://") || objectName.startsWith("https://")) {
+            return objectName;
+        }
         return "/api/media/" + Arrays.stream(objectName.split("/"))
                 .map(segment -> UriUtils.encodePathSegment(segment, StandardCharsets.UTF_8))
                 .collect(Collectors.joining("/"));

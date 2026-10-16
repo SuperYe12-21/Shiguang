@@ -77,6 +77,9 @@ public class OssStorageService implements StorageService {
 
     @Override
     public String publicUrl(String objectName) {
+        if (objectName.startsWith("http://") || objectName.startsWith("https://")) {
+            return objectName;
+        }
         return publicBaseUrl + "/" + Arrays.stream(objectName.split("/"))
                 .map(segment -> UriUtils.encodePathSegment(segment, StandardCharsets.UTF_8))
                 .collect(Collectors.joining("/"));

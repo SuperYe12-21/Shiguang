@@ -1,5 +1,8 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import { useAuthStore } from '../stores/auth'
+import router from '../router'
+import { loginLocation } from '../auth/redirect'
 
 const http = axios.create({
   baseURL: '/api',
@@ -7,12 +10,32 @@ const http = axios.create({
 })
 
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('sg_token')
+  if (config.skipAuthRefresh) return config
+  const auth = useAuthStore()
+  if (config.authRetried && config.authSessionVersion !== auth.sessionVersion) {
+    return Promise.reject(new Error('登录状态已改变'))
+  }
+  const token = auth.token
+  config.authToken = token
+  config.authSessionVersion = auth.sessionVersion
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  } else {
+    delete config.headers.Authorization
   }
   return config
 })
+
+let loginNavigation = null
+
+async function returnToLogin() {
+  if (router.currentRoute.value.name === 'login') return
+  if (!loginNavigation) {
+    loginNavigation = router.replace(loginLocation(router.currentRoute.value.fullPath, router))
+      .finally(() => { loginNavigation = null })
+  }
+  await loginNavigation
+}
 
 http.interceptors.response.use(
   (res) => {
@@ -23,12 +46,31 @@ http.interceptors.response.use(
     }
     return body.data
   },
-  (err) => {
-    if (err.response && err.response.status === 401) {
-      localStorage.removeItem('sg_token')
-      if (!location.pathname.startsWith('/login')) {
-        location.href = '/login'
+  async (err) => {
+    const config = err.config
+    if (err.response?.status === 401 && config && !config.skipAuthRefresh) {
+      const auth = useAuthStore()
+      if (config.authSessionVersion !== auth.sessionVersion) return Promise.reject(err)
+      if (config.authRetried) {
+        auth.logout()
+        await returnToLogin()
+        return Promise.reject(err)
       }
+      config.authRetried = true
+      if (!auth.token || config.authToken === auth.token) {
+        try {
+          await auth.refreshSession()
+        } catch (refreshError) {
+          if (refreshError.invalidSession) {
+            await returnToLogin()
+          } else if (config.authSessionVersion === auth.sessionVersion) {
+            ElMessage.error({ message: refreshError.response?.data?.message || '登录续期暂时失败，请稍后重试', grouping: true })
+          }
+          return Promise.reject(refreshError)
+        }
+      }
+      if (config.authSessionVersion !== auth.sessionVersion) return Promise.reject(err)
+      return http(config)
     } else {
       const msg = err.response?.data?.message || '网络异常，请稍后重试'
       ElMessage.error(msg)

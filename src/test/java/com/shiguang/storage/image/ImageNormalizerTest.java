@@ -3,6 +3,8 @@ package com.shiguang.storage.image;
 import com.shiguang.common.BizException;
 import com.shiguang.storage.StorageException;
 import com.shiguang.storage.StorageService;
+import com.shiguang.storage.UploadOwnershipService;
+import com.shiguang.storage.UploadPurpose;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -51,6 +53,9 @@ class ImageNormalizerTest {
     @Mock
     private HeifConverter heifConverter;
 
+    @Mock
+    private UploadOwnershipService uploadOwnershipService;
+
     @InjectMocks
     private ImageNormalizer normalizer;
 
@@ -59,11 +64,12 @@ class ImageNormalizerTest {
         givenHeicObject();
         givenConverterWritesJpeg();
 
-        String result = normalizer.normalize(HEIC_OBJECT);
+        String result = normalizer.normalize(7L, HEIC_OBJECT, UploadPurpose.IMAGE);
 
         assertThat(result).startsWith("images/").endsWith(".jpg").isNotEqualTo(HEIC_OBJECT);
         verify(storageService).putObject(eq(result), any(File.class), eq("image/jpeg"));
-        verify(storageService).deleteObject(HEIC_OBJECT);
+        verify(uploadOwnershipService).registerNormalized(7L, HEIC_OBJECT, result);
+        verify(uploadOwnershipService).deleteOwnedIfPresent(7L, HEIC_OBJECT);
     }
 
     @Test
@@ -76,7 +82,7 @@ class ImageNormalizerTest {
             return null;
         }).when(storageService).putObject(anyString(), any(File.class), anyString());
 
-        normalizer.normalize(HEIC_OBJECT);
+        normalizer.normalize(7L, HEIC_OBJECT, UploadPurpose.IMAGE);
 
         assertThat(uploaded.get()).isEqualTo(CONVERTED);
     }
@@ -85,23 +91,26 @@ class ImageNormalizerTest {
     void realJpegIsLeftUntouched() {
         when(storageService.open(JPEG_OBJECT, 0, 32)).thenReturn(new ByteArrayInputStream(JPEG_HEADER));
 
-        assertThat(normalizer.normalize(JPEG_OBJECT)).isEqualTo(JPEG_OBJECT);
+        assertThat(normalizer.normalize(7L, JPEG_OBJECT, UploadPurpose.IMAGE)).isEqualTo(JPEG_OBJECT);
+        verify(uploadOwnershipService).validateAndBind(7L, JPEG_OBJECT, UploadPurpose.IMAGE);
         verify(heifConverter, never()).toJpeg(any(), any());
         verify(storageService, never()).putObject(anyString(), any(), anyString());
     }
 
     @Test
-    void externalUrlIsLeftUntouched() {
+    void externalUrlCannotBypassOwnershipValidation() {
         String url = "https://shiguang-bucket.oss-cn-beijing.aliyuncs.com/images/a.jpeg";
 
-        assertThat(normalizer.normalize(url)).isEqualTo(url);
+        doThrow(new BizException("文件对象名非法")).when(uploadOwnershipService)
+                .validateAndBind(7L, url, UploadPurpose.IMAGE);
+        assertThatThrownBy(() -> normalizer.normalize(7L, url, UploadPurpose.IMAGE)).isInstanceOf(BizException.class);
         verifyNoInteractions(storageService, heifConverter);
     }
 
     @Test
     void blankIsLeftUntouched() {
-        assertThat(normalizer.normalize(null)).isNull();
-        assertThat(normalizer.normalize("  ")).isEqualTo("  ");
+        assertThat(normalizer.normalize(7L, null, UploadPurpose.IMAGE)).isNull();
+        assertThat(normalizer.normalize(7L, "  ", UploadPurpose.IMAGE)).isEqualTo("  ");
         verifyNoInteractions(storageService, heifConverter);
     }
 
@@ -109,7 +118,7 @@ class ImageNormalizerTest {
     void unreadableObjectIsPassedThrough() {
         when(storageService.open(JPEG_OBJECT, 0, 32)).thenThrow(StorageException.notFound(JPEG_OBJECT));
 
-        assertThat(normalizer.normalize(JPEG_OBJECT)).isEqualTo(JPEG_OBJECT);
+        assertThat(normalizer.normalize(7L, JPEG_OBJECT, UploadPurpose.IMAGE)).isEqualTo(JPEG_OBJECT);
         verify(heifConverter, never()).toJpeg(any(), any());
     }
 
@@ -118,7 +127,7 @@ class ImageNormalizerTest {
         givenHeicObject();
         doThrow(new IllegalStateException("heif-convert not installed")).when(heifConverter).toJpeg(any(), any());
 
-        assertThatThrownBy(() -> normalizer.normalize(HEIC_OBJECT))
+        assertThatThrownBy(() -> normalizer.normalize(7L, HEIC_OBJECT, UploadPurpose.IMAGE))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("HEIC");
         verify(storageService, never()).putObject(anyString(), any(), anyString());
@@ -130,7 +139,7 @@ class ImageNormalizerTest {
         givenHeicObject();
         givenConverterWritesJpeg();
 
-        List<String> result = normalizer.normalizeAll(Arrays.asList("images/ok.jpg", HEIC_OBJECT));
+        List<String> result = normalizer.normalizeAll(7L, Arrays.asList("images/ok.jpg", HEIC_OBJECT));
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0)).isEqualTo("images/ok.jpg");
@@ -139,8 +148,8 @@ class ImageNormalizerTest {
 
     @Test
     void normalizeAllWithEmptyInputReturnsAsIs() {
-        assertThat(normalizer.normalizeAll(null)).isNull();
-        assertThat(normalizer.normalizeAll(List.of())).isEmpty();
+        assertThat(normalizer.normalizeAll(7L, null)).isNull();
+        assertThat(normalizer.normalizeAll(7L, List.of())).isEmpty();
         verifyNoInteractions(storageService, heifConverter);
     }
 

@@ -90,7 +90,7 @@ public class CommentService {
     public CommentVO create(Long postId, Long userId, String content, List<String> images) {
         Post post = likeService.requireAccessiblePost(postId, userId);
         String trimmed = normalizeContent(content);
-        List<String> objects = imageNormalizer.normalizeAll(normalizeImages(images));
+        List<String> objects = imageNormalizer.normalizeAll(userId, normalizeImages(images));
         if (trimmed.isEmpty() && objects.isEmpty()) {
             throw new BizException(1, "评论内容不能为空");
         }
@@ -118,7 +118,7 @@ public class CommentService {
         Comment parent = requireComment(commentId);
         Post post = likeService.requireAccessiblePost(parent.getPostId(), userId);
         String trimmed = normalizeContent(content);
-        List<String> objects = imageNormalizer.normalizeAll(normalizeImages(images));
+        List<String> objects = imageNormalizer.normalizeAll(userId, normalizeImages(images));
         if (trimmed.isEmpty() && objects.isEmpty()) {
             throw new BizException(1, "回复内容不能为空");
         }

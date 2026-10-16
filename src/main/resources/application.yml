@@ -7,6 +7,16 @@ spring:
   jackson:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss
+  rabbitmq:
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        prefetch: 1
+  task:
+    scheduling:
+      pool:
+        size: 4
 
 server:
   port: 8080
