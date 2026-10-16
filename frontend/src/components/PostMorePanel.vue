@@ -153,7 +153,7 @@ async function doDelete() {
 .pm-mask {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: transparent;
   animation: pm-fade 0.18s ease;
 }
 
@@ -164,8 +164,8 @@ async function doDelete() {
   bottom: 0;
   padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
   border-radius: 18px 18px 0 0;
-  background: #16151b;
-  color: #fff;
+  background: var(--sg-card, #faf8f2);
+  color: var(--sg-text, #3b4239);
   animation: pm-up 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -179,7 +179,7 @@ async function doDelete() {
   padding: 16px;
   border-radius: 14px;
   transform: translateY(-50%);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 40px rgba(59, 66, 57, 0.14);
   animation: pm-in-right 0.18s ease;
 }
 
@@ -202,14 +202,14 @@ async function doDelete() {
   margin: 0 0 12px;
   font-size: 15px;
   font-weight: 600;
-  color: #fff;
+  color: var(--sg-text, #3b4239);
 }
 
 .pm-sub {
   margin: -6px 0 14px;
   font-size: 13px;
   line-height: 1.5;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--sg-text-2, #777c70);
 }
 
 .pm-item {
@@ -237,17 +237,17 @@ button.pm-item:disabled {
 }
 
 .pm-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--sg-primary-soft, #eee4d8);
 }
 
 .pm-item.danger .pm-label,
 .pm-item.danger .pm-ico {
-  color: #ff5b5b;
+  color: var(--sg-primary-deep, #9a573d);
 }
 
 .pm-ico {
   display: inline-flex;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--sg-text-2, #777c70);
 }
 
 .pm-label {
@@ -259,7 +259,7 @@ button.pm-item:disabled {
   width: 42px;
   height: 24px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--sg-line, #e6e3d9);
   transition: background 0.2s;
 }
 
@@ -270,12 +270,12 @@ button.pm-item:disabled {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--sg-card, #faf8f2);
   transition: transform 0.2s;
 }
 
 .pm-switch.on {
-  background: var(--sg-primary, #ff5c5c);
+  background: var(--sg-primary, #b66c4d);
 }
 
 .pm-switch.on i {
@@ -288,10 +288,10 @@ button.pm-item:disabled {
   box-sizing: border-box;
   margin-bottom: 10px;
   padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--sg-line, #e6e3d9);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  background: var(--sg-bg, #f4f1e9);
+  color: var(--sg-text, #3b4239);
   font-size: 14px;
   font-family: inherit;
   resize: none;
@@ -299,13 +299,13 @@ button.pm-item:disabled {
 
 .pm-input::placeholder,
 .pm-textarea::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--sg-text-3, #99998d);
 }
 
 .pm-input:focus,
 .pm-textarea:focus {
   outline: none;
-  border-color: var(--sg-primary, #ff5c5c);
+  border-color: var(--sg-primary, #b66c4d);
 }
 
 .pm-actions {
@@ -331,17 +331,17 @@ button.pm-item:disabled {
 }
 
 .pm-btn.ghost {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: var(--sg-primary-soft, #eee4d8);
+  color: var(--sg-text, #3b4239);
 }
 
 .pm-btn.primary {
-  background: var(--sg-primary, #ff5c5c);
+  background: var(--sg-primary, #b66c4d);
   color: #fff;
 }
 
 .pm-btn.danger {
-  background: #ff4d4f;
+  background: var(--sg-primary-deep, #9a573d);
   color: #fff;
 }
 </style>

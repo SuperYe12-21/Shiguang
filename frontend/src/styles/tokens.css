@@ -1,37 +1,44 @@
-/* 拾光设计令牌：米白底 + 暖珊瑚强调 + 圆角 */
+/* 拾光设计令牌：暖白纸感 + 陶土强调 + 棕绿文字 */
 :root {
   /* 颜色 */
-  --sg-bg: #f7f7f5;
-  --sg-bg-warm: #f3ede6;
-  --sg-bg-deep: #ece2d6;
-  --sg-primary: #ff5c5c;
-  --sg-primary-deep: #e84b4b;
-  --sg-primary-soft: #ffe9e6;
-  --sg-text: #26221f;
-  --sg-text-2: #8a837d;
-  --sg-text-3: #b8b2ab;
-  --sg-card: #ffffff;
-  --sg-line: rgba(38, 34, 31, 0.08);
-  --sg-glass: rgba(255, 255, 255, 0.72);
+  --sg-bg: #f4f1e9;
+  --sg-bg-warm: #eee8dc;
+  --sg-bg-deep: #ddd4c0;
+  --sg-primary: #b66c4d;
+  --sg-primary-deep: #9a573d;
+  --sg-primary-soft: #eee4d8;
+  --sg-text: #3b4239;
+  --sg-text-2: #777c70;
+  --sg-text-3: #99998d;
+  --sg-card: #faf8f2;
+  --sg-line: #e6e3d9;
+  --sg-glass: rgba(250, 248, 242, 0.96);
+  --sg-danger: #c3574f;
+  --sg-sidebar-w: 188px;
+  --sg-comment-w: clamp(300px, 32vw, 400px);
 
   /* 圆角 */
   --sg-radius-sm: 8px;
-  --sg-radius: 14px;
-  --sg-radius-lg: 20px;
+  --sg-radius: 8px;
+  --sg-radius-lg: 12px;
   --sg-radius-full: 999px;
 
   /* 阴影 */
-  --sg-shadow: 0 8px 30px rgba(38, 34, 31, 0.08);
-  --sg-shadow-lg: 0 16px 48px rgba(38, 34, 31, 0.16);
+  --sg-shadow: 0 4px 18px rgba(59, 66, 57, 0.04);
+  --sg-shadow-lg: 0 12px 36px rgba(59, 66, 57, 0.1);
 
   /* 尺寸 */
-  --sg-nav-h: 56px;
+  --sg-nav-h: 64px;
   --sg-page-w: 560px;
 
   /* 字体 */
   --sg-font: 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
 
   /* 渐变 */
-  --sg-gradient: linear-gradient(160deg, #fdf6ee 0%, #f7e9dd 55%, #fbe3de 100%);
-  --sg-gradient-deep: linear-gradient(165deg, #f7e0d4 0%, #f3c9c3 100%);
+  --sg-gradient: linear-gradient(110deg, #dadfd2, #e3ddca, #ddd4c0);
+  --sg-gradient-deep: linear-gradient(135deg, #bec8b5, #b7997f);
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  :root { --sg-sidebar-w: 87px; }
 }

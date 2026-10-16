@@ -1,7 +1,7 @@
 <template>
-  <div class="chat" :class="{ dark: !isPc }">
+  <div class="chat" :class="{ embedded: props.embedded }">
     <header class="chat-top">
-      <button class="chat-back" aria-label="返回" @click="goBack">
+      <button v-if="!props.embedded" class="chat-back" aria-label="返回" @click="goBack">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
         <span>返回</span>
       </button>
@@ -9,7 +9,7 @@
         <img class="chat-peer-avatar" :src="avatarOf(peer)" alt="" />
         <span class="chat-peer-name">{{ peer?.nickname || '拾光用户' }}</span>
       </div>
-      <div class="chat-top-space"></div>
+      <div v-if="!props.embedded" class="chat-top-space"></div>
     </header>
 
     <main ref="listEl" class="chat-list" @scroll.passive="onScroll">
@@ -63,7 +63,7 @@
         :placeholder="canSend ? '发消息…' : '对方回复后才能继续聊天'"
         :disabled="!canSend || sending"
         :sending="sending"
-        :dark="!isPc"
+        :dark="false"
         @submit="send"
       />
     </footer>
@@ -83,13 +83,18 @@ import { useAuthStore } from '../stores/auth'
 import RichInput from '../components/RichInput.vue'
 import ImageViewer from '../components/ImageViewer.vue'
 
+const props = defineProps({
+  peerUserId: { type: [Number, String], default: null },
+  embedded: { type: Boolean, default: false }
+})
+const emit = defineEmits(['read'])
+
 const route = useRoute()
 const router = useRouter()
 const message = useMessageStore()
 const auth = useAuthStore()
 
-const peerId = Number(route.params.userId)
-const isPc = ref(window.innerWidth >= 768)
+const peerId = Number(props.peerUserId ?? route.params.userId)
 const listEl = ref(null)
 const inputEl = ref(null)
 const richInputEl = ref(null)
@@ -109,6 +114,7 @@ const viewerImages = ref([])
 const viewerIndex = ref(0)
 const viewerOpen = ref(false)
 let unsubscribe = null
+let disposed = false
 
 function avatarOf(user) {
   if (user?.avatarUrl) return user.avatarUrl
@@ -209,9 +215,11 @@ async function refreshState() {
 async function markRead() {
   try {
     const data = await markConversationRead(peerId)
+    if (disposed) return
     if (data && typeof data.messages === 'number') {
       message.unread = data.messages
     }
+    emit('read', peerId)
   } catch (e) {
     // 忽略
   }
@@ -286,10 +294,6 @@ function goBack() {
   }
 }
 
-function syncIsPc() {
-  isPc.value = window.innerWidth >= 768
-}
-
 onMounted(async () => {
   if (!peerId) {
     router.replace('/messages')
@@ -298,9 +302,9 @@ onMounted(async () => {
   message.refresh()
   loadMe()
   await loadFirst()
+  if (disposed) return
   markRead()
   unsubscribe = message.subscribe(onIncoming)
-  window.addEventListener('resize', syncIsPc)
 })
 
 async function loadMe() {
@@ -313,22 +317,22 @@ async function loadMe() {
 }
 
 onBeforeUnmount(() => {
+  disposed = true
   if (unsubscribe) unsubscribe()
-  window.removeEventListener('resize', syncIsPc)
 })
 </script>
 
 <style scoped>
 .chat {
-  --bg: #f7f7f5;
-  --card: #fff;
-  --text: #26221f;
-  --text-2: #8a837d;
-  --line: rgba(38, 34, 31, 0.08);
-  --btn-bg: #fff;
-  --peer-bubble: #ffffff;
+  --bg: var(--sg-bg, #f4f1e9);
+  --card: var(--sg-card, #faf8f2);
+  --text: var(--sg-text, #3b4239);
+  --text-2: var(--sg-text-2, #99998d);
+  --line: var(--sg-line, #e6e3d9);
+  --peer-bubble: var(--card);
   display: flex;
   flex-direction: column;
+  min-width: 0;
   height: 100vh;
   height: 100dvh;
   background: var(--bg);
@@ -337,14 +341,9 @@ onBeforeUnmount(() => {
   -webkit-font-smoothing: antialiased;
 }
 
-.chat.dark {
-  --bg: #0b0b0e;
-  --card: rgba(255, 255, 255, 0.055);
-  --text: #f5f2ee;
-  --text-2: rgba(245, 242, 238, 0.5);
-  --line: rgba(255, 255, 255, 0.09);
-  --btn-bg: rgba(255, 255, 255, 0.08);
-  --peer-bubble: rgba(255, 255, 255, 0.1);
+.chat.embedded {
+  height: 100%;
+  min-height: 0;
 }
 
 .chat-top {
@@ -352,15 +351,11 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  min-height: 68px;
+  padding: 12px 24px;
+  box-sizing: border-box;
   border-bottom: 1px solid var(--line);
   background: var(--bg);
-}
-
-.dark .chat-top {
-  background: rgba(11, 11, 14, 0.92);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
 }
 
 .chat-back {
@@ -368,21 +363,23 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 5px;
   height: 36px;
-  padding: 0 14px 0 9px;
-  border-radius: 999px;
+  padding: 0 12px 0 9px;
+  border-radius: 6px;
   border: 1px solid var(--line);
-  background: var(--btn-bg);
+  background: var(--card);
   color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
   cursor: pointer;
   font-family: inherit;
-  transition: all 0.2s;
 }
 
 .chat-back:hover {
-  border-color: rgba(255, 92, 92, 0.45);
-  color: #ff5c5c;
+  color: var(--sg-primary, #b66c4d);
+}
+
+.chat-back:focus-visible, .chat-card:focus-visible {
+  outline: 2px solid var(--sg-primary, #b66c4d);
+  outline-offset: 2px;
 }
 
 .chat-peer {
@@ -390,22 +387,30 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 11px;
   cursor: pointer;
   min-width: 0;
 }
 
+.embedded .chat-top {
+  min-height: 75px;
+}
+
+.embedded .chat-peer {
+  justify-content: flex-start;
+}
+
 .chat-peer-avatar {
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   object-fit: cover;
   flex: none;
 }
 
 .chat-peer-name {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -418,35 +423,40 @@ onBeforeUnmount(() => {
 
 .chat-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 8px 16px 16px;
-  max-width: 720px;
+  overscroll-behavior: contain;
+  padding: 20px 28px 24px;
+  max-width: 900px;
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
 }
 
+.embedded .chat-list {
+  max-width: none;
+}
+
 .chat-more {
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  min-height: 24px;
+  display: grid;
+  place-items: center;
   color: var(--text-2);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .chat-divider {
   text-align: center;
   color: var(--text-2);
-  font-size: 12px;
-  margin: 14px 0 10px;
+  font-size: 10px;
+  margin: 12px 0 23px;
 }
 
 .chat-row {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  margin: 6px 0;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 20px;
 }
 
 .chat-row.mine {
@@ -454,32 +464,32 @@ onBeforeUnmount(() => {
 }
 
 .chat-avatar {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   object-fit: cover;
   flex: none;
-  margin-bottom: 2px;
 }
 
 .chat-imgs {
   display: grid;
-  grid-template-columns: repeat(3, 96px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
-  max-width: min(68%, 520px);
+  width: min(78%, 296px);
 }
 
 .chat-imgs-1 {
-  grid-template-columns: 180px;
+  grid-template-columns: minmax(0, 1fr);
+  width: min(78%, 180px);
 }
 
 .chat-img {
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: 5px;
   cursor: zoom-in;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--line);
 }
 
 .chat-row.mine .chat-imgs {
@@ -488,46 +498,45 @@ onBeforeUnmount(() => {
 
 .chat-card {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  width: min(72%, 320px);
-  padding: 10px;
-  border-radius: 14px;
-  background: var(--card, #fff);
-  box-shadow: 0 2px 12px rgba(38, 34, 31, 0.1);
+  flex-direction: column;
+  width: min(78%, 220px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card);
+  color: inherit;
+  font-family: inherit;
   text-align: left;
   cursor: pointer;
 }
 
-.dark .chat-card {
-  background: rgba(255, 255, 255, 0.1);
-}
-
 .chat-card-cover {
-  width: 62px;
-  height: 62px;
-  border-radius: 10px;
+  width: 100%;
+  height: 120px;
   object-fit: cover;
   flex: none;
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--line);
 }
 
 .chat-card-blank {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.6);
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
 }
 
 .chat-card-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
+  width: 100%;
+  padding: 12px;
+  box-sizing: border-box;
 }
 
 .chat-card-title {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -535,30 +544,25 @@ onBeforeUnmount(() => {
 }
 
 .chat-card-sub {
-  font-size: 12px;
-  opacity: 0.65;
+  font-size: 10px;
+  color: var(--text-2);
 }
 
 .chat-bubble {
-  max-width: min(68%, 520px);
-  padding: 10px 14px;
-  border-radius: 16px;
+  max-width: min(78%, 520px);
+  padding: 12px 15px;
+  border-radius: 5px;
   background: var(--peer-bubble);
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.8;
   word-break: break-word;
   white-space: pre-wrap;
-  box-shadow: 0 1px 4px rgba(38, 34, 31, 0.05);
-}
-
-.chat-row:not(.mine) .chat-bubble {
-  border-bottom-left-radius: 6px;
+  box-sizing: border-box;
 }
 
 .chat-row.mine .chat-bubble {
-  background: #ff5c5c;
-  color: #fff;
-  border-bottom-right-radius: 6px;
+  background: var(--sg-primary-soft, #eee4d8);
+  color: var(--text);
 }
 
 .chat-empty {
@@ -570,80 +574,44 @@ onBeforeUnmount(() => {
 
 .chat-input {
   flex: none;
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  min-width: 0;
+  padding: 8px 12px 0;
   border-top: 1px solid var(--line);
-  background: var(--bg);
+  background: var(--card);
 }
 
-.dark .chat-input {
-  background: rgba(11, 11, 14, 0.92);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+.chat-input :deep(.ri) {
+  max-width: 900px;
+  margin: 0 auto;
+  border-top: 0;
 }
 
 .chat-hint {
-  max-width: 720px;
+  max-width: 876px;
   margin: 0 auto 8px;
   padding: 7px 12px;
-  border-radius: 10px;
-  background: rgba(255, 92, 92, 0.1);
-  color: #ff5c5c;
+  border-radius: 5px;
+  background: var(--sg-primary-soft, #eee4d8);
+  color: var(--sg-primary, #b66c4d);
   font-size: 12px;
 }
 
-.chat-input-row {
-  max-width: 720px;
-  margin: 0 auto;
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-}
+@media (max-width: 767px) {
+  .chat-top {
+    min-height: 65px;
+    padding: 10px 12px;
+  }
 
-.chat-text {
-  flex: 1;
-  min-height: 42px;
-  max-height: 120px;
-  padding: 11px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--text);
-  font-size: 14px;
-  font-family: inherit;
-  line-height: 1.45;
-  resize: none;
-  outline: none;
-}
+  .chat-list {
+    padding: 20px 16px;
+  }
 
-.chat-text:focus {
-  border-color: rgba(255, 92, 92, 0.5);
-}
+  .chat-input {
+    padding: 6px 0 0;
+  }
 
-.chat-text:disabled {
-  opacity: 0.55;
-}
-
-.chat-send {
-  flex: none;
-  height: 42px;
-  padding: 0 22px;
-  border: none;
-  border-radius: 14px;
-  background: #ff5c5c;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  transition: opacity 0.18s, transform 0.18s;
-}
-
-.chat-send:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.chat-send:not(:disabled):active {
-  transform: scale(0.97);
+  .chat-hint {
+    margin: 0 12px 6px;
+  }
 }
 </style>

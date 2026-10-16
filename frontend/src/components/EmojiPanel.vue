@@ -44,6 +44,8 @@ const groups = [
 
 <style scoped>
 .emoji-panel {
+  background: var(--sg-card, #faf8f2);
+  color: var(--sg-text, #3b4239);
   max-height: 232px;
   overflow-y: auto;
   padding: 10px 12px 12px;
@@ -55,7 +57,7 @@ const groups = [
 
 .emoji-title {
   font-size: 11px;
-  color: var(--text-2, #8a837d);
+  color: var(--sg-text-2, #777c70);
   margin-bottom: 6px;
 }
 
@@ -77,7 +79,7 @@ const groups = [
 }
 
 .emoji-btn:hover {
-  background: rgba(255, 92, 92, 0.12);
+  background: var(--sg-primary-soft, #eee4d8);
   transform: scale(1.12);
 }
 </style>

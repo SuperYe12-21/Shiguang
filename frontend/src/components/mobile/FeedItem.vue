@@ -628,7 +628,7 @@ function formatCount(n) {
    保持卡片高度不变，避免最后一条视频因滚动位置被钳制而无法正常压缩 */
 section.feed-item.item-compact .feed-video,
 section.feed-item.item-compact .feed-image {
-  height: 38%;
+  height: 48%;
 }
 
 section.feed-item.item-compact .feed-meta,
@@ -641,7 +641,7 @@ section.feed-item.item-compact .play-mask-m,
 section.feed-item.item-compact .video-fail {
   inset: 0 auto auto 0;
   width: 100%;
-  height: 38%;
+  height: 48%;
 }
 
 /* 评论区打开时：隐藏播放遮罩与三角形图标，避免遮挡评论；点视频本身仍可恢复播放 */
@@ -671,7 +671,7 @@ section.feed-item.item-compact .play-mask-m {
 
 section.feed-item.item-compact .resume-frame {
   inset: 0 auto auto 0;
-  height: 38%;
+  height: 48%;
 }
 
 .feed-image {
@@ -756,7 +756,7 @@ section.feed-item.item-compact .resume-frame {
   position: absolute;
   left: 0;
   right: 88px;
-  bottom: calc(var(--sg-nav-h) + env(safe-area-inset-bottom) + 4px);
+  bottom: 24px;
   padding: 18px 16px 8px;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.5));
   color: #fff;
@@ -833,7 +833,9 @@ section.feed-item.item-compact .resume-frame {
 .action-rail {
   position: absolute;
   right: 10px;
-  bottom: calc(var(--sg-nav-h) + env(safe-area-inset-bottom) + 161px);
+  top: 36%;
+  bottom: auto;
+  transform: translateY(-20%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -994,7 +996,7 @@ section.feed-item.item-compact .resume-frame {
   position: absolute;
   left: 14px;
   right: 14px;
-  bottom: calc(var(--sg-nav-h) + env(safe-area-inset-bottom));
+  bottom: 0;
   height: 22px;
   z-index: 7;
   touch-action: none;

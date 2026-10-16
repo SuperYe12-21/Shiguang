@@ -70,7 +70,7 @@ input {
 .sg-btn-primary {
   background: var(--sg-primary);
   color: #fff;
-  border-radius: var(--sg-radius-full);
+  border-radius: var(--sg-radius-sm);
   padding: 10px 22px;
   font-size: 15px;
   transition: background 0.2s, transform 0.15s;
@@ -108,4 +108,18 @@ input {
 
 .sg-pop {
   animation: sg-pop 0.3s ease;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--sg-primary);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

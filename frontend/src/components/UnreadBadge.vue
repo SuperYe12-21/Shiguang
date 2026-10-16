@@ -20,7 +20,7 @@ const text = computed(() => {
 
 <style scoped>
 .sg-badge {
-  background: #ff5c5c;
+  background: var(--sg-primary);
   color: #fff;
   font-weight: 600;
   line-height: 1;

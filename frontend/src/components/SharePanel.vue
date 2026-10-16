@@ -157,7 +157,7 @@ onMounted(loadFriends)
 .sp-mask {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: transparent;
   animation: sp-fade 0.18s ease;
 }
 
@@ -168,8 +168,8 @@ onMounted(loadFriends)
   bottom: 0;
   padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
   border-radius: 18px 18px 0 0;
-  background: #16151b;
-  color: #fff;
+  background: var(--sg-card, #faf8f2);
+  color: var(--sg-text, #3b4239);
   animation: sp-up 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -182,7 +182,7 @@ onMounted(loadFriends)
   padding: 22px;
   border-radius: 16px;
   transform: translate(-50%, -50%);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 18px 50px rgba(59, 66, 57, 0.14);
   animation: sp-in 0.18s ease;
 }
 
@@ -213,7 +213,7 @@ onMounted(loadFriends)
   gap: 12px;
   padding: 10px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--sg-bg, #f4f1e9);
 }
 
 .sp-thumb {
@@ -222,7 +222,7 @@ onMounted(loadFriends)
   border-radius: 8px;
   object-fit: cover;
   flex: none;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--sg-primary-soft, #eee4d8);
 }
 
 .sp-thumb-empty {
@@ -230,7 +230,7 @@ onMounted(loadFriends)
   align-items: center;
   justify-content: center;
   font-size: 22px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--sg-text-2, #777c70);
 }
 
 .sp-card-info {
@@ -248,13 +248,13 @@ onMounted(loadFriends)
 .sp-card-sub {
   margin-top: 5px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--sg-text-2, #777c70);
 }
 
 .sp-section {
   margin: 18px 0 10px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--sg-text-2, #777c70);
 }
 
 .sp-friends {
@@ -288,7 +288,7 @@ onMounted(loadFriends)
   height: 52px;
   border-radius: 50%;
   padding: 2px;
-  background: linear-gradient(135deg, #ff5c5c, #ffa06b);
+  background: linear-gradient(135deg, var(--sg-primary, #b66c4d), var(--sg-primary-soft, #eee4d8));
 }
 
 .sp-avatar {
@@ -297,7 +297,7 @@ onMounted(loadFriends)
   border-radius: 50%;
   object-fit: cover;
   display: block;
-  background: #26252c;
+  background: var(--sg-bg, #f4f1e9);
 }
 
 .sp-avatar-wrap.sending {
@@ -310,13 +310,13 @@ onMounted(loadFriends)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--sg-text, #3b4239);
 }
 
 .sp-hint {
   padding: 14px 2px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--sg-text-2, #777c70);
 }
 
 .sp-manual {
@@ -326,17 +326,17 @@ onMounted(loadFriends)
 .sp-manual-tip {
   margin-bottom: 8px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--sg-text-2, #777c70);
 }
 
 .sp-input {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--sg-line, #e6e3d9);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  background: var(--sg-bg, #f4f1e9);
+  color: var(--sg-text, #3b4239);
   font-size: 13px;
   font-family: inherit;
 }
@@ -352,7 +352,7 @@ onMounted(loadFriends)
   height: 42px;
   border: none;
   border-radius: 12px;
-  background: var(--sg-primary, #ff5c5c);
+  background: var(--sg-primary, #b66c4d);
   color: #fff;
   font-size: 14px;
   font-weight: 600;
@@ -366,7 +366,7 @@ onMounted(loadFriends)
 }
 
 .sp-btn.ghost {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: var(--sg-primary-soft, #eee4d8);
+  color: var(--sg-text, #3b4239);
 }
 </style>

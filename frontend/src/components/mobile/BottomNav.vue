@@ -109,8 +109,10 @@ function goHome() {
   height: calc(var(--sg-nav-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   border-top: 1px solid var(--sg-line);
-  border-radius: 18px 18px 0 0;
-  box-shadow: 0 -6px 24px rgba(38, 34, 31, 0.06);
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--sg-card);
+  backdrop-filter: none;
 }
 
 .nav-item {
@@ -152,15 +154,15 @@ function goHome() {
 }
 
 .publish-circle {
-  width: 42px;
-  height: 42px;
-  margin-top: -18px;
-  border-radius: 50%;
+  width: 39px;
+  height: 30px;
+  margin-top: 0;
+  border-radius: 8px;
   background: var(--sg-primary);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 16px rgba(232, 75, 75, 0.35);
+  box-shadow: none;
 }
 </style>

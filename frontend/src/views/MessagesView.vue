@@ -1,15 +1,23 @@
 <template>
-  <div class="mv" :class="{ dark: !isPc }">
+  <div class="mv">
+    <AppSideNav
+      v-if="isPc"
+      active="message"
+      :user="auth.user"
+      :unread-count="message.unread + notification.unread.total"
+      :friends-unread="notification.friendsUnread"
+    />
     <header class="mv-top">
-      <button class="mv-back" aria-label="返回" @click="goBack">
+      <button v-if="!isPc" class="mv-back" aria-label="返回" @click="goBack">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
         <span>返回</span>
       </button>
       <h1 class="mv-title">消息</h1>
-      <div class="mv-top-space"></div>
+      <span v-if="isPc" class="mv-top-note">新的连接，就在这里</span>
+      <div v-else class="mv-top-space"></div>
     </header>
 
-    <main class="mv-list">
+    <main ref="listEl" class="mv-list" aria-label="私信会话" @scroll.passive="onListScroll">
       <!-- 互动消息入口：点击跳转到对应的消息列表 -->
       <nav class="mv-tiles">
         <button v-for="t in TILES" :key="t.key" class="mv-tile" @click="openInteractions(t.key)">
@@ -32,7 +40,14 @@
         <p class="mv-sub">去别人的主页点「私信」，打个招呼吧</p>
       </div>
 
-      <div v-for="c in items" :key="c.id" class="mv-item" @click="openChat(c)">
+      <button
+        v-for="c in items"
+        :key="c.id"
+        class="mv-item"
+        :class="{ selected: isPc && selectedPeerId === c.peer?.id }"
+        :aria-pressed="isPc ? selectedPeerId === c.peer?.id : undefined"
+        @click="openChat(c)"
+      >
         <img class="mv-avatar" :src="avatarOf(c.peer)" alt="" />
         <div class="mv-body">
           <p class="mv-name">{{ c.peer?.nickname || '拾光用户' }}</p>
@@ -42,13 +57,28 @@
           <span class="mv-time">{{ relTime(c.lastMessageAt) }}</span>
           <span v-if="c.unread > 0" class="mv-badge">{{ c.unread > 99 ? '99+' : c.unread }}</span>
         </div>
-      </div>
+      </button>
 
       <div class="mv-more">
         <span v-if="loadingMore">加载中…</span>
         <span v-else-if="items.length && !hasMore">— 没有更多了 —</span>
       </div>
     </main>
+    <section v-if="isPc" class="mv-chat" aria-label="聊天对话">
+      <ChatView
+        v-if="selectedPeerId"
+        :key="selectedPeerId"
+        :peer-user-id="selectedPeerId"
+        embedded
+        @read="onConversationRead"
+      />
+      <div v-else class="mv-chat-empty">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H7l-5 2 2-5v-5.5a8.5 8.5 0 0 1 17 0Z"/></svg>
+        <p>选一段对话，聊聊今天</p>
+        <span>从左侧选择会话，继续你们的故事</span>
+      </div>
+    </section>
+    <BottomNav v-else active="message" />
   </div>
 </template>
 
@@ -60,6 +90,9 @@ import { useMessageStore } from '../stores/message'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationStore } from '../stores/notification'
 import UnreadBadge from '../components/UnreadBadge.vue'
+import AppSideNav from '../components/AppSideNav.vue'
+import BottomNav from '../components/mobile/BottomNav.vue'
+import ChatView from './ChatView.vue'
 
 const router = useRouter()
 const message = useMessageStore()
@@ -78,13 +111,15 @@ function openInteractions(key) {
 }
 
 const isPc = ref(window.innerWidth >= 768)
+const selectedPeerId = ref(null)
+const listEl = ref(null)
 const items = ref([])
 const cursor = ref(null)
 const hasMore = ref(true)
 const loading = ref(false)
 const loadingMore = ref(false)
 let unsubscribe = null
-let scrollHandler = null
+let disposed = false
 
 function avatarOf(peer) {
   if (peer?.avatarUrl) return peer.avatarUrl
@@ -149,7 +184,24 @@ async function loadMore() {
 }
 
 function openChat(c) {
-  if (c.peer?.id) router.push('/chat/' + c.peer.id)
+  if (!c.peer?.id) return
+  if (isPc.value) {
+    selectedPeerId.value = c.peer.id
+  } else {
+    router.push('/chat/' + c.peer.id)
+  }
+}
+
+function onConversationRead(peerId) {
+  const conversation = items.value.find((item) => item.peer?.id === peerId)
+  if (conversation) conversation.unread = 0
+}
+
+function onListScroll() {
+  const element = listEl.value
+  if (element && element.scrollTop + element.clientHeight >= element.scrollHeight - 400) {
+    loadMore()
+  }
 }
 
 /** 实时新消息：更新对应会话并置顶；列表里没有就重新拉一页 */
@@ -184,227 +236,196 @@ function syncIsPc() {
 }
 
 onMounted(async () => {
+  window.addEventListener('resize', syncIsPc)
   await loadFirst()
+  if (disposed) return
   message.refresh()
   unsubscribe = message.subscribe(onIncoming)
-  scrollHandler = () => {
-    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 400) {
-      loadMore()
-    }
-  }
-  window.addEventListener('scroll', scrollHandler, { passive: true })
-  window.addEventListener('resize', syncIsPc)
 })
 
 onBeforeUnmount(() => {
+  disposed = true
   if (unsubscribe) unsubscribe()
-  if (scrollHandler) window.removeEventListener('scroll', scrollHandler)
   window.removeEventListener('resize', syncIsPc)
 })
 </script>
 
 <style scoped>
 .mv {
-  --bg: #f7f7f5;
-  --card: #fff;
-  --text: #26221f;
-  --text-2: #8a837d;
-  --line: rgba(38, 34, 31, 0.08);
-  --btn-bg: #fff;
-  min-height: 100vh;
+  --bg: var(--sg-bg, #f4f1e9);
+  --card: var(--sg-card, #faf8f2);
+  --text: var(--sg-text, #3b4239);
+  --text-2: var(--sg-text-2, #99998d);
+  --line: var(--sg-line, #e6e3d9);
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-rows: 77px minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  padding-left: var(--sg-sidebar-w, 188px);
+  box-sizing: border-box;
   background: var(--bg);
   color: var(--text);
   font-family: var(--sg-font);
   -webkit-font-smoothing: antialiased;
 }
 
-.mv.dark {
-  --bg: #0b0b0e;
-  --card: rgba(255, 255, 255, 0.055);
-  --text: #f5f2ee;
-  --text-2: rgba(245, 242, 238, 0.5);
-  --line: rgba(255, 255, 255, 0.09);
-  --btn-bg: rgba(255, 255, 255, 0.08);
-  padding-bottom: calc(var(--sg-nav-h) + env(safe-area-inset-bottom) + 16px);
-}
-
 .mv-top {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 26px 18px 14px;
+  grid-column: 1 / -1;
+  padding: 0 32px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-}
-
-.mv.dark .mv-top {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  padding: 14px 16px;
-  background: rgba(11, 11, 14, 0.88);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--line);
 }
 
 .mv-back {
   display: flex;
   align-items: center;
   gap: 5px;
-  height: 38px;
-  padding: 0 16px 0 10px;
-  border-radius: 999px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 6px;
   border: 1px solid var(--line);
-  background: var(--btn-bg);
+  background: var(--card);
   color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
+  font: inherit;
+  font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s;
-  font-family: inherit;
-}
-
-.mv-back:hover {
-  border-color: rgba(255, 92, 92, 0.45);
-  color: #ff5c5c;
 }
 
 .mv-title {
-  flex: 1;
-  text-align: center;
+  margin: 0;
   font-size: 19px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
-.mv-top-space {
-  width: 76px;
-  flex: none;
+.mv-top-note, .mv-top-space {
+  color: var(--text-2);
+  font-size: 12px;
 }
 
 .mv-list {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 6px 18px 70px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 18px;
+  border-right: 1px solid var(--line);
 }
 
 .mv-tiles {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 28px;
 }
 
 .mv-tile {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 16px 8px 14px;
-  border-radius: 16px;
-  background: var(--card);
-  border: 1px solid transparent;
-  color: var(--text);
+  gap: 10px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-2);
   font-family: inherit;
   cursor: pointer;
-  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
-}
-
-.mv:not(.dark) .mv-tile:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 26px rgba(38, 34, 31, 0.09);
-  border-color: rgba(255, 92, 92, 0.22);
-}
-
-.mv.dark .mv-tile:hover {
-  background: rgba(255, 255, 255, 0.09);
 }
 
 .mv-tile-ico {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: rgba(255, 92, 92, 0.12);
-  color: #ff5c5c;
+  background: var(--sg-primary-soft, #eee4d8);
+  color: var(--sg-primary, #b66c4d);
+}
+
+.mv-tile:nth-child(2) .mv-tile-ico {
+  background: #e5ebe0;
+  color: #7b9176;
+}
+
+.mv-tile:nth-child(3) .mv-tile-ico {
+  background: #e8e5d9;
+  color: #999273;
 }
 
 .mv-tile-ico svg {
-  width: 22px;
-  height: 22px;
+  width: 21px;
+  height: 21px;
 }
 
 .mv-tile-text {
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 11px;
 }
 
 .mv-section {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  padding: 4px 4px 2px;
-  font-size: 14px;
-  font-weight: 700;
+  padding: 0 9px 14px;
+  font-size: 12px;
+  color: var(--text-2);
 }
 
 .mv-section-hint {
-  font-size: 12px;
-  font-weight: 600;
-  color: #ff5c5c;
+  font-size: 10px;
+  color: var(--sg-primary, #b66c4d);
 }
 
 .mv-state {
-  padding: 80px 0;
+  padding: 60px 8px;
   text-align: center;
   color: var(--text-2);
-  font-size: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  font-size: 13px;
+}
+
+.mv-state p {
+  margin: 0 0 10px;
 }
 
 .mv-sub {
-  font-size: 12px;
-  opacity: 0.75;
+  font-size: 11px;
+  line-height: 1.8;
 }
 
 .mv-item {
   display: flex;
+  width: 100%;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: var(--card);
-  border: 1px solid transparent;
+  gap: 10px;
+  padding: 16px 10px;
+  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  font-family: inherit;
   cursor: pointer;
-  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+  transition: background 0.18s;
 }
 
-.mv:not(.dark) .mv-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 26px rgba(38, 34, 31, 0.09);
-  border-color: rgba(255, 92, 92, 0.22);
+.mv-item:hover, .mv-item.selected {
+  background: var(--sg-primary-soft, #eee4d8);
 }
 
-.mv.dark .mv-item:hover {
-  background: rgba(255, 255, 255, 0.09);
+.mv-item:focus-visible, .mv-tile:focus-visible, .mv-back:focus-visible {
+  outline: 2px solid var(--sg-primary, #b66c4d);
+  outline-offset: 2px;
 }
 
 .mv-avatar {
-  width: 50px;
-  height: 50px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   object-fit: cover;
   flex: none;
-  background: var(--btn-bg);
-  border: 2px solid rgba(255, 92, 92, 0.25);
+  background: var(--card);
 }
 
 .mv-body {
@@ -413,13 +434,14 @@ onBeforeUnmount(() => {
 }
 
 .mv-name {
-  font-size: 15px;
-  font-weight: 700;
-  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 7px;
 }
 
 .mv-preview {
-  font-size: 13px;
+  margin: 0;
+  font-size: 11px;
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
@@ -431,34 +453,121 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 8px;
+  align-self: flex-start;
+  padding-top: 3px;
 }
 
 .mv-time {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--text-2);
 }
 
 .mv-badge {
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  box-sizing: border-box;
   border-radius: 999px;
-  background: #ff5c5c;
+  background: var(--sg-primary, #b66c4d);
   color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-size: 10px;
+  display: grid;
+  place-items: center;
 }
 
 .mv-more {
-  height: 40px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.mv-chat {
+  min-width: 0;
+  min-height: 0;
+}
+
+.mv-chat-empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  height: 100%;
+  gap: 12px;
+  padding: 24px;
+  box-sizing: border-box;
+  text-align: center;
   color: var(--text-2);
+}
+
+.mv-chat-empty svg {
+  color: var(--sg-primary, #b66c4d);
+  opacity: 0.6;
+}
+
+.mv-chat-empty p {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: 16px;
+  font-family: serif;
+}
+
+.mv-chat-empty span {
   font-size: 12px;
+}
+
+@media (max-width: 767px) {
+  .mv {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 62px minmax(0, 1fr);
+    padding-left: 0;
+    padding-bottom: calc(var(--sg-nav-h, 60px) + env(safe-area-inset-bottom));
+    background: var(--card);
+  }
+
+  .mv-top {
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mv-title {
+    flex: 1;
+    text-align: center;
+    font-size: 17px;
+  }
+
+  .mv-top-space {
+    width: 76px;
+    flex: none;
+  }
+
+  .mv-list {
+    padding: 26px 17px 16px;
+    border: 0;
+  }
+
+  .mv-tiles {
+    margin-bottom: 30px;
+  }
+
+  .mv-tile-ico {
+    width: 49px;
+    height: 49px;
+  }
+
+  .mv-item {
+    padding: 17px 8px;
+  }
+
+  .mv-avatar {
+    width: 45px;
+    height: 45px;
+  }
+
+  .mv-preview {
+    font-size: 12px;
+  }
 }
 </style>

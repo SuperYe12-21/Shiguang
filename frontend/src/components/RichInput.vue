@@ -183,8 +183,9 @@ defineExpose({ focus: () => inputEl.value?.focus(), closeEmoji: () => { emojiOpe
 <style scoped>
 .ri {
   position: relative;
-  border-top: 1px solid var(--line, rgba(38, 34, 31, 0.08));
-  background: var(--card, #fff);
+  border-top: 1px solid var(--sg-line, #e6e3d9);
+  background: var(--sg-card, #faf8f2);
+  color: var(--sg-text, #3b4239);
 }
 
 .ri-strip {
@@ -202,7 +203,7 @@ defineExpose({ focus: () => inputEl.value?.focus(), closeEmoji: () => { emojiOpe
   border-radius: 10px;
   overflow: hidden;
   flex: none;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--sg-bg, #f4f1e9);
 }
 
 .ri-thumb img {
@@ -240,7 +241,7 @@ defineExpose({ focus: () => inputEl.value?.focus(), closeEmoji: () => { emojiOpe
 .ri-strip-tip {
   margin-left: auto;
   font-size: 11px;
-  color: var(--text-2, #8a837d);
+  color: var(--sg-text-2, #777c70);
   flex: none;
 }
 
@@ -257,7 +258,8 @@ defineExpose({ focus: () => inputEl.value?.focus(), closeEmoji: () => { emojiOpe
   flex: none;
   border: none;
   border-radius: 50%;
-  background: rgba(38, 34, 31, 0.06);
+  background: var(--sg-bg, #f4f1e9);
+  color: var(--sg-text-2, #777c70);
   font-size: 19px;
   line-height: 1;
   cursor: pointer;
@@ -265,17 +267,17 @@ defineExpose({ focus: () => inputEl.value?.focus(), closeEmoji: () => { emojiOpe
 }
 
 .ri-btn:hover {
-  background: rgba(255, 92, 92, 0.14);
+  background: var(--sg-primary-soft, #eee4d8);
 }
 
 .ri-btn.on {
-  background: rgba(255, 92, 92, 0.18);
+  background: var(--sg-primary-soft, #eee4d8);
 }
 
 .ri-plus {
   font-size: 24px;
   font-weight: 500;
-  color: #ff5c5c;
+  color: var(--sg-primary, #b66c4d);
 }
 
 .ri-input {
@@ -285,14 +287,18 @@ defineExpose({ focus: () => inputEl.value?.focus(), closeEmoji: () => { emojiOpe
   padding: 0 14px;
   border: none;
   border-radius: 999px;
-  background: rgba(38, 34, 31, 0.06);
+  background: var(--sg-bg, #f4f1e9);
   font-size: 14px;
   font-family: inherit;
   color: inherit;
 }
 
+.ri-input::placeholder {
+  color: var(--sg-text-3, #99998d);
+}
+
 .ri-input:focus {
-  outline: 2px solid rgba(255, 92, 92, 0.35);
+  outline: 2px solid var(--sg-primary, #b66c4d);
   outline-offset: -1px;
 }
 
@@ -302,7 +308,7 @@ defineExpose({ focus: () => inputEl.value?.focus(), closeEmoji: () => { emojiOpe
   padding: 0 20px;
   border: none;
   border-radius: 999px;
-  background: #ff5c5c;
+  background: var(--sg-primary, #b66c4d);
   color: #fff;
   font-size: 14px;
   font-weight: 600;
@@ -312,7 +318,7 @@ defineExpose({ focus: () => inputEl.value?.focus(), closeEmoji: () => { emojiOpe
 }
 
 .ri-send:hover:not(:disabled) {
-  background: #ff4747;
+  background: var(--sg-primary-deep, #9a573d);
 }
 
 .ri-send:disabled {
@@ -321,8 +327,8 @@ defineExpose({ focus: () => inputEl.value?.focus(), closeEmoji: () => { emojiOpe
 }
 
 .ri-emoji {
-  border-top: 1px solid var(--line, rgba(38, 34, 31, 0.08));
-  background: var(--card, #fff);
+  border-top: 1px solid var(--sg-line, #e6e3d9);
+  background: var(--sg-card, #faf8f2);
 }
 
 .ri-file {
@@ -330,13 +336,18 @@ defineExpose({ focus: () => inputEl.value?.focus(), closeEmoji: () => { emojiOpe
 }
 
 .ri-dark {
-  --card: rgba(255, 255, 255, 0.06);
-  --line: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  border-top-color: rgba(255, 255, 255, 0.1);
   color: #fff;
 }
 
 .ri-dark .ri-btn {
   background: rgba(255, 255, 255, 0.14);
+}
+
+.ri-dark .ri-btn:hover,
+.ri-dark .ri-btn.on {
+  background: var(--sg-primary-soft, #eee4d8);
 }
 
 .ri-dark .ri-input {

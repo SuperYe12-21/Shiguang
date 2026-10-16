@@ -637,7 +637,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #0b0b0e;
+  background: var(--sg-bg);
 }
 
 /* 双击点赞爱心层 */
@@ -672,12 +672,14 @@ onBeforeUnmount(() => {
 
 .media {
   position: absolute;
-  inset: 0;
+  inset: 24px 100px 24px 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #0b0b0e;
   cursor: pointer;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .resume-frame {
@@ -820,9 +822,9 @@ onBeforeUnmount(() => {
 /* 视频进度条 */
 .video-progress {
   position: absolute;
-  left: 26px;
-  right: 26px;
-  bottom: 18px;
+  left: 56px;
+  right: 124px;
+  bottom: 32px;
   height: 16px;
   z-index: 6;
   display: flex;
@@ -844,7 +846,7 @@ onBeforeUnmount(() => {
   height: 100%;
   border-radius: 2px;
   background: var(--sg-primary);
-  box-shadow: 0 0 8px rgba(255, 92, 92, 0.55);
+  box-shadow: 0 0 8px rgba(182, 108, 77, 0.25);
   transition: width 0.1s linear;
 }
 
@@ -878,14 +880,15 @@ onBeforeUnmount(() => {
 
 .meta {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 32px;
+  right: 100px;
+  bottom: 24px;
   z-index: 3;
-  padding: 90px 44px 34px 36px;
+  padding: 75px 24px 36px;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.55) 100%);
   pointer-events: none;
   transition: opacity 0.15s ease;
+  border-radius: 0 0 8px 8px;
 }
 
 .meta-author {
@@ -899,8 +902,8 @@ onBeforeUnmount(() => {
 }
 
 .avatar {
-  width: 44px;
-  height: 44px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid rgba(255, 255, 255, 0.85);
@@ -925,7 +928,7 @@ onBeforeUnmount(() => {
 }
 
 .title {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 600;
   color: #fff;
   margin-bottom: 6px;
@@ -980,13 +983,15 @@ onBeforeUnmount(() => {
 
 .rail {
   position: absolute;
-  right: 26px;
-  bottom: 150px;
+  right: 28px;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
   z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 22px;
 }
 
 .rail-avatar-wrap {
@@ -995,8 +1000,8 @@ onBeforeUnmount(() => {
 }
 
 .rail-avatar {
-  width: 54px;
-  height: 54px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid #fff;
@@ -1012,7 +1017,7 @@ onBeforeUnmount(() => {
   height: 22px;
   border-radius: 50%;
   background: var(--sg-primary);
-  border: 2px solid #0b0b0e;
+  border: 2px solid var(--sg-bg);
   color: #fff;
   font-size: 15px;
   font-weight: 700;
@@ -1031,10 +1036,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  color: var(--sg-text-2);
+  font-size: 11px;
+  font-weight: 500;
   transition: transform 0.15s;
 }
 
@@ -1043,12 +1047,17 @@ onBeforeUnmount(() => {
 }
 
 .rail-btn.liked {
-  color: #ff4757;
+  color: var(--sg-primary);
 }
 
 .rail-btn.favorited {
-  color: #ffc53d;
+  color: var(--sg-primary);
 }
+
+.rail-btn svg { width: 25px; height: 25px; }
+.item-compact .media { right: 24px; }
+.item-compact .meta { right: 24px; }
+.item-compact .video-progress { right: 48px; }
 
 .multi-badge {
   position: absolute;

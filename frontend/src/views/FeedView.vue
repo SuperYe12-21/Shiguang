@@ -1,17 +1,20 @@
 <template>
   <div class="feed-page" :class="{ 'is-pc': isPc, 'has-comment': !!commentPost }">
     <!-- 移动端：全屏竖屏流 + 底部导航 -->
-    <div v-if="feed.mode === 'user' || feed.mode === 'likes' || feed.mode === 'friends' || isSingle" class="m-back-bar">
-      <button class="m-back-btn" @click="onBack">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
-        返回
-      </button>
-      <span class="m-back-title">{{ scopeLabel }}</span>
-    </div>
     <template v-if="!isPc">
-      <button v-if="feed.mode === 'home' && !isSingle" class="m-search-fab" aria-label="搜索" @click="router.push('/search')">
+      <header class="m-header">
+        <div class="m-header-tabs">
+          <template v-if="scopeLabel">
+            <button class="m-header-back" aria-label="返回" @click="onBack">‹</button><span class="m-header-scope">{{ scopeLabel }}</span>
+          </template>
+          <template v-else>
+            <button class="m-header-tab on" @click="goHome">推荐</button><button class="m-header-tab" @click="goFriends">朋友</button>
+          </template>
+        </div>
+        <button class="m-header-search" aria-label="搜索" @click="router.push('/search')">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
-      </button>
+        </button>
+      </header>
       <main
         ref="scrollEl"
         class="m-scroll"
@@ -64,11 +67,23 @@
 
     <!-- PC：抖音式一屏一卡，滚轮翻页 -->
     <template v-else>
+      <AppSideNav :active="pcActive" :user="auth.user" :unread-count="unreadTotal" :friends-unread="notification.friendsUnread" @home="goHome" />
+      <header class="p-header">
+        <div class="p-header-tabs">
+          <button v-if="scopeLabel" class="p-header-back" @click="onBack" aria-label="返回">‹</button>
+          <span v-if="scopeLabel" class="p-header-scope">{{ scopeLabel }}</span>
+          <template v-else>
+            <button class="p-header-tab" :class="{ on: pcActive === 'home' }" @click="goHome">推荐</button>
+            <button class="p-header-tab" :class="{ on: pcActive === 'friends' }" @click="goFriends">朋友</button>
+          </template>
+        </div>
+        <button class="p-search" @click="router.push('/search')"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></svg><span>搜索你感兴趣的内容</span></button>
+      </header>
       <div class="p-viewport" @wheel.prevent="onWheel">
         <div
           class="p-stack"
           :class="{ booting: !feedReady }"
-          :style="{ transform: `translateY(-${currentIndex * 100}vh)` }"
+          :style="{ transform: `translateY(-${currentIndex * 100}%)` }"
         >
           <template v-if="feed.loading && !feed.posts.length">
             <div class="p-loading">
@@ -113,28 +128,6 @@
         </div>
       </div>
 
-      <!-- 单作品页：左上角返回（回到来处，通常是消息页） -->
-      <button v-if="isSingle" class="p-back" @click="onBack">
-        <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
-        返回
-      </button>
-
-      <!-- 顶部迷你导航 -->
-      <nav class="p-topbar">
-        <span class="p-logo">拾光</span>
-        <button class="p-nav-btn" :class="{ on: pcActive === 'home' }" @click="goHome">首页</button>
-        <button class="p-nav-btn" :class="{ on: pcActive === 'friends' }" @click="goFriends">
-          朋友
-          <span v-if="notification.friendsUnread" class="p-dot"></span>
-        </button>
-        <button class="p-nav-btn" @click="router.push('/search')">搜<span class="p-glyph-tall">索</span></button>
-        <button class="p-nav-btn" @click="router.push('/publish')">发布</button>
-        <button class="p-nav-btn" @click="goMessages">
-          消息
-          <UnreadBadge :count="unreadTotal" />
-        </button>
-        <button class="p-nav-btn" @click="goMe">我的</button>
-      </nav>
     </template>
 
     <CommentPanel
@@ -171,10 +164,10 @@ import { fetchProfile } from '../api/user'
 import FeedItem from '../components/mobile/FeedItem.vue'
 import BottomNav from '../components/mobile/BottomNav.vue'
 import PcFeedCard from '../components/pc/PcFeedCard.vue'
+import AppSideNav from '../components/AppSideNav.vue'
 import CommentPanel from '../components/CommentPanel.vue'
 import PostMorePanel from '../components/PostMorePanel.vue'
 import SharePanel from '../components/SharePanel.vue'
-import UnreadBadge from '../components/UnreadBadge.vue'
 import { pushOverlay, popOverlay, dropOverlay } from '../utils/overlayHistory'
 import { useNotificationStore } from '../stores/notification'
 import { useMessageStore } from '../stores/message'
@@ -203,7 +196,7 @@ function setCardRef(i, el) {
   cardEls[i] = el || undefined
 }
 
-const isPc = computed(() => window.innerWidth >= 768)
+const isPc = ref(window.innerWidth >= 768)
 // PC 顶栏高亮：朋友动态流归"朋友"，其余（首页/他人主页/点赞/单作品）都归"首页"
 const pcActive = computed(() => (route.name === 'friends-feed' ? 'friends' : 'home'))
 
@@ -569,6 +562,13 @@ onMounted(async () => {
   window.visualViewport?.addEventListener('scroll', syncViewportHeight)
   window.__syncSgVh = syncViewportHeight
   resizeHandler = () => {
+    const nextIsPc = window.innerWidth >= 768
+    if (nextIsPc !== isPc.value) {
+      const index = currentIndex.value
+      isPc.value = nextIsPc
+      nextTick(() => scrollToIndex(index))
+      return
+    }
     if (!isPc.value) {
       const el = scrollEl.value
       if (el) {
@@ -732,22 +732,6 @@ function goNext() {
 function goPrev() {
   if (currentIndex.value <= 0) return
   currentIndex.value -= 1
-}
-
-function goMe() {
-  if (!auth.isLoggedIn) {
-    router.push('/login')
-    return
-  }
-  router.push('/me')
-}
-
-function goMessages() {
-  if (!auth.isLoggedIn) {
-    router.push('/login')
-    return
-  }
-  router.push('/messages')
 }
 
 function goFriends() {
@@ -956,78 +940,35 @@ async function onFollow(post) {
 .feed-page {
   height: var(--sg-vh, 100%);
   display: flex;
+  flex-direction: column;
 }
 
 /* 移动端 */
 .m-scroll {
   flex: 1;
-  height: 100%;
+  min-height: 0;
+  height: calc(100% - 58px - var(--sg-nav-h) - env(safe-area-inset-bottom));
+  margin-bottom: calc(var(--sg-nav-h) + env(safe-area-inset-bottom));
   overflow-y: auto;
   scroll-snap-type: y mandatory;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
 
+.m-header { position: relative; z-index: 2200; height: 58px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 20px; background: var(--sg-card); border-bottom: 1px solid var(--sg-line); }
+.m-header-tabs { display: flex; height: 100%; align-items: center; gap: 20px; min-width: 0; }
+.m-header-tab { height: 100%; position: relative; color: var(--sg-text-3); font-size: 13px; }
+.m-header-tab.on { color: var(--sg-text); font-weight: 600; }
+.m-header-tab.on::after { content: ''; position: absolute; height: 3px; width: 14px; left: calc(50% - 7px); bottom: 7px; background: var(--sg-primary); border-radius: 3px; }
+.m-header-back { font-size: 30px; line-height: 1; color: var(--sg-text-2); }
+.m-header-scope { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-header-search { display: grid; place-items: center; width: 30px; height: 30px; color: var(--sg-text-2); flex: none; }
+
 /* 开机定位阶段：关掉滚动吸附，避免恢复观看位置时被吸附动画带着滑过去 */
 .m-scroll.booting {
   scroll-snap-type: none;
 }
 
-/* 首页右上角搜索浮标 */
-.m-search-fab {
-  position: fixed;
-  top: calc(12px + env(safe-area-inset-top));
-  right: 14px;
-  z-index: 40;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-/* 用户作品流 / 单作品页：返回条 */
-.m-back-bar {
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  /* 必须高于评论面板遮罩（2000），否则开着评论点返回会被遮罩吃掉第一下 */
-  z-index: 2200;
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  color: #fff;
-  font-size: 13px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-.m-back-btn {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  color: #fff;
-  font-weight: 600;
-}
-
-.m-back-title {
-  color: rgba(255, 255, 255, 0.85);
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .m-scroll > .feed-item,
 .m-scroll > .m-skeleton {
@@ -1075,20 +1016,32 @@ async function onFollow(post) {
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
-  background: #0b0b0e;
+  background: var(--sg-bg);
+  display: flex;
+  flex-direction: column;
+  padding-left: var(--sg-sidebar-w);
 }
+
+.p-header { position: relative; z-index: 2200; height: 77px; flex: none; padding: 0 35px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--sg-line); }
+.p-header-tabs { display: flex; align-items: center; gap: 25px; height: 100%; min-width: 0; }
+.p-header-tab { position: relative; height: 100%; padding: 0 2px; color: var(--sg-text-3); font-size: 14px; }
+.p-header-tab.on { color: var(--sg-text); font-weight: 600; }
+.p-header-tab.on::after { content: ''; position: absolute; bottom: 15px; left: 25%; width: 50%; height: 3px; border-radius: 3px; background: var(--sg-primary); }
+.p-header-back { font-size: 30px; color: var(--sg-text-2); line-height: 1; }
+.p-header-scope { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.p-search { display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-radius: 20px; border: 1px solid var(--sg-line); background: var(--sg-card); color: var(--sg-text-3); font-size: 11px; flex: none; }
 
 .p-viewport {
   flex: 1;
   min-width: 0;
-  height: 100%;
+  height: calc(100% - 77px);
   overflow: hidden;
-  background: #0b0b0e;
+  background: var(--sg-bg);
 }
 
 /* 评论打开时：视频区等比例压缩靠左，评论区占右侧 */
 .has-comment .p-viewport {
-  margin-right: 440px;
+  margin-right: var(--sg-comment-w);
   transition: margin-right 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -1109,8 +1062,7 @@ async function onFollow(post) {
 .p-stack > .p-end,
 .p-stack > .p-loading,
 .p-stack > .p-empty {
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   flex-shrink: 0;
 }
 
@@ -1147,120 +1099,4 @@ async function onFollow(post) {
   background: #0b0b0e;
 }
 
-/* 顶部迷你导航 */
-.p-back {
-  position: fixed;
-  top: 18px;
-  left: 18px;
-  /* 同移动端：压在评论面板遮罩（2000）之上，保证一次点击就能返回 */
-  z-index: 2200;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 40px;
-  padding: 0 18px 0 12px;
-  border-radius: 999px;
-  background: rgba(16, 15, 18, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.p-back:hover {
-  background: rgba(16, 15, 18, 0.82);
-}
-
-.p-topbar {
-  position: fixed;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
-  border-radius: var(--sg-radius-full);
-  background: rgba(16, 15, 18, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
-}
-
-.p-back-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  transition: background 0.2s;
-}
-
-.p-back-btn:hover {
-  background: rgba(255, 255, 255, 0.24);
-}
-
-.p-logo {
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: 2px;
-  margin: 0 10px 0 8px;
-  background: var(--sg-gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.p-nav-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: var(--sg-radius-full);
-  color: rgba(255, 255, 255, 0.75);
-  font-size: 13px;
-  transition: background 0.2s, color 0.2s;
-}
-
-/* 朋友页红点：好友有新作品（深色胶囊顶栏版本，无白边） */
-.p-dot {
-  position: absolute;
-  top: 4px;
-  right: 7px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #ff5c5c;
-}
-
-.p-nav-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-}
-
-.p-nav-btn.on {
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
-  font-weight: 600;
-}
-
-/* "索"字形在同字号下比其他字矮约 1.5%，做一点光学补偿 */
-.p-glyph-tall {
-  display: inline-block;
-  transform: scaleY(1.015);
-  transform-origin: center 62%;
-}
 </style>
