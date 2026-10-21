@@ -11,9 +11,8 @@
         loop
         :muted="muted"
         playsinline
-        webkit-playsinline
-        x5-playsinline
-        x5-video-player-type="h5"
+        webkit-playsinline="true"
+        x5-video-player-type="h5-page"
         controlslist="nodownload noplaybackrate noremoteplayback"
         :preload="active || warm ? 'auto' : 'metadata'"
         @loadedmetadata="onMeta"
