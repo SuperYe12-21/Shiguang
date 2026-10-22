@@ -223,6 +223,7 @@ const postImages = computed(() => {
 })
 const lightboxIndex = ref(0)
 const muted = ref(false)
+let playRequest = 0
 const pcImgIndex = ref(0)
 const dragOffset = ref(0)
 const dragging = ref(false)
@@ -409,10 +410,12 @@ function tryPlay(v) {
   if (!v) return
   applyResumeSeek(v)
   if (seekPending) return
+  const request = ++playRequest
   v.muted = muted.value
   const p = v.play()
   if (p && p.catch) {
     p.catch(() => {
+      if (request !== playRequest || !props.active || videoEl.value !== v) return
       if (!v.muted) {
         muted.value = true
         v.muted = true
@@ -494,7 +497,10 @@ function togglePlay() {
   if (!props.active) return
   const v = videoEl.value
   if (!v) return
-  if (v.paused) {
+  if (v.muted) {
+    muted.value = false
+    tryPlay(v)
+  } else if (v.paused) {
     tryPlay(v)
   } else {
     v.pause()
@@ -505,6 +511,15 @@ function togglePlay() {
 // 双击点赞：单击暂停/播放（延迟判定），双击冒爱心并点赞（已赞只出动画，不取消）
 function onMediaClick(e) {
   if (props.post.type === 'VIDEO') {
+    if (videoEl.value?.muted) {
+      if (tapTimer) {
+        clearTimeout(tapTimer)
+        tapTimer = null
+      }
+      lastTapAt = 0
+      togglePlay()
+      return
+    }
     const now = Date.now()
     if (now - lastTapAt < 260) {
       lastTapAt = 0
